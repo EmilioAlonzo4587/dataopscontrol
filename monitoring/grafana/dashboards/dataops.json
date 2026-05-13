@@ -1,0 +1,70 @@
+{
+  "title": "DataOps Control Center",
+  "uid": "dataops-main",
+  "version": 1,
+  "schemaVersion": 36,
+  "tags": ["dataops"],
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Backend Health",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "up{job=\"dataops-backend\"}",
+          "legendFormat": "Backend"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "PostgreSQL Health",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "targets": [
+        {
+          "expr": "up{job=\"postgres-primary\"}",
+          "legendFormat": "Postgres"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PostgreSQL Active Connections",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "pg_stat_database_numbackends",
+          "legendFormat": "{{datname}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PostgreSQL Deadlocks",
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_deadlocks[5m])",
+          "legendFormat": "deadlocks/s {{datname}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PostgreSQL Transactions",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_database_xact_commit[5m])",
+          "legendFormat": "commits/s {{datname}}"
+        },
+        {
+          "expr": "rate(pg_stat_database_xact_rollback[5m])",
+          "legendFormat": "rollbacks/s {{datname}}"
+        }
+      ]
+    }
+  ],
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s"
+}

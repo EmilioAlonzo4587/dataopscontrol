@@ -1,0 +1,222 @@
+version: '3.9'
+
+services:
+  # ─────────────────────────────────────────
+  # DATABASES
+  # ─────────────────────────────────────────
+  postgres_primary:
+    image: postgres:16
+    container_name: dataops_postgres_primary
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dataops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataops123}
+      POSTGRES_DB: ${POSTGRES_DB:-dataops_primary}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./backend/migrations/init_postgres.sql:/docker-entrypoint-initdb.d/init.sql
+    command: >
+      postgres
+        -c wal_level=replica
+        -c max_wal_senders=5
+        -c wal_keep_size=64
+        -c hot_standby=on
+    networks:
+      - dataops_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dataops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres_replica:
+    image: postgres:16
+    container_name: dataops_postgres_replica
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dataops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dataops123}
+      POSTGRES_DB: ${POSTGRES_DB:-dataops_primary}
+      PGUSER: ${POSTGRES_USER:-dataops}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+    networks:
+      - dataops_net
+    entrypoint: >
+      bash -c "
+        rm -rf /var/lib/postgresql/data/*
+        until pg_basebackup -h postgres_primary -D /var/lib/postgresql/data -U ${POSTGRES_USER:-dataops} -Fp -Xs -P -R; do
+          echo 'Waiting for primary...'
+          sleep 2
+        done
+        echo 'standby_mode = on' >> /var/lib/postgresql/data/recovery.conf
+        chmod 0700 /var/lib/postgresql/data
+        postgres
+      "
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: dataops_sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: ${MSSQL_SA_PASSWORD:-DataOps123!}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - dataops_net
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "${MSSQL_SA_PASSWORD:-DataOps123!}" -Q "SELECT 1" || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ─────────────────────────────────────────
+  # CACHE
+  # ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: dataops_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - dataops_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # BACKEND (FastAPI)
+  # ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dataops_backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dataops}:${POSTGRES_PASSWORD:-dataops123}@postgres_primary:5432/${POSTGRES_DB:-dataops_primary}
+      DATABASE_URL_REPLICA: postgresql+asyncpg://${POSTGRES_USER:-dataops}:${POSTGRES_PASSWORD:-dataops123}@postgres_replica:5432/${POSTGRES_DB:-dataops_primary}
+      MSSQL_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD:-DataOps123!}@sqlserver:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-supersecretkey_dataops_2024_change_in_prod}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-dataops-backups}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-admin@dataops.com}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - backup_storage:/app/backups
+    networks:
+      - dataops_net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # FRONTEND (React)
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: dataops_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - dataops_net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # MONITORING
+  # ─────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: dataops_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - dataops_net
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: dataops_grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - dataops_net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # POSTGRES EXPORTER for Prometheus
+  # ─────────────────────────────────────────
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: dataops_postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-dataops}:${POSTGRES_PASSWORD:-dataops123}@postgres_primary:5432/${POSTGRES_DB:-dataops_primary}?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+    networks:
+      - dataops_net
+    restart: unless-stopped
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+  sqlserver_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  backup_storage:
+
+networks:
+  dataops_net:
+    driver: bridge
