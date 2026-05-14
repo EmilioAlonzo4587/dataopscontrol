@@ -83,10 +83,10 @@ class Connection(Base):
     created_at:    Mapped[datetime]         = mapped_column(DateTime, server_default=func.now())
     last_checked:  Mapped[datetime | None]  = mapped_column(DateTime, nullable=True)
 
-    metrics:    list["DBMetric"]          = relationship("DBMetric", back_populates="connection", cascade="all, delete-orphan")
-    backups:    list["BackupHistory"]     = relationship("BackupHistory", back_populates="connection")
-    alerts:     list["AlertLog"]          = relationship("AlertLog", back_populates="connection")
-    replication:list["ReplicationStatus"] = relationship("ReplicationStatus", back_populates="connection")
+    metrics:    Mapped[list["DBMetric"]]          = relationship("DBMetric", back_populates="connection", cascade="all, delete-orphan")
+    backups:    Mapped[list["BackupHistory"]]     = relationship("BackupHistory", back_populates="connection")
+    alerts:     Mapped[list["AlertLog"]]          = relationship("AlertLog", back_populates="connection")
+    replication:Mapped[list["ReplicationStatus"]] = relationship("ReplicationStatus", back_populates="connection")
 
 
 # ─── MODULE 2: DB_METRICS ─────────────────────────────────────
@@ -105,7 +105,7 @@ class DBMetric(Base):
     health_status:Mapped[HealthStatus] = mapped_column(SAEnum(HealthStatus), default=HealthStatus.HEALTHY)
     capture_time: Mapped[datetime]     = mapped_column(DateTime, server_default=func.now(), index=True)
 
-    connection: "Connection" = relationship("Connection", back_populates="metrics")
+    connection: Mapped["Connection"] = relationship("Connection", back_populates="metrics")
 
 
 # ─── MODULE 3: QUERY_LOG ──────────────────────────────────────
@@ -164,7 +164,7 @@ class BackupHistory(Base):
     notes:          Mapped[str | None]   = mapped_column(Text, nullable=True)
     created_at:     Mapped[datetime]     = mapped_column(DateTime, server_default=func.now(), index=True)
 
-    connection: "Connection" = relationship("Connection", back_populates="backups")
+    connection: Mapped["Connection"] = relationship("Connection", back_populates="backups")
 
 
 # ─── MODULE 6: REPLICATION_STATUS ────────────────────────────
@@ -182,7 +182,7 @@ class ReplicationStatus(Base):
     is_streaming: Mapped[bool]         = mapped_column(Boolean, default=True)
     captured_at:  Mapped[datetime]     = mapped_column(DateTime, server_default=func.now(), index=True)
 
-    connection: "Connection" = relationship("Connection", back_populates="replication")
+    connection: Mapped["Connection"] = relationship("Connection", back_populates="replication")
 
 
 # ─── MODULE 7: CACHE_METRICS ─────────────────────────────────
@@ -233,7 +233,7 @@ class AlertLog(Base):
     resolved_at: Mapped[datetime|None] = mapped_column(DateTime, nullable=True)
     created_at:  Mapped[datetime]      = mapped_column(DateTime, server_default=func.now(), index=True)
 
-    connection: "Connection" = relationship("Connection", back_populates="alerts")
+    connection: Mapped["Connection"] = relationship("Connection", back_populates="alerts")
 
 
 # ─── AUTH: USERS ─────────────────────────────────────────────
