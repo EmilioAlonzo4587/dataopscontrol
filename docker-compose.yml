@@ -113,6 +113,7 @@ services:
       MSSQL_URL: mssql+pyodbc://sa:${MSSQL_SA_PASSWORD:-DataOps123!}@sqlserver:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-supersecretkey_dataops_2024_change_in_prod}
+      API_URL_FRONTEND: ${API_URL_FRONTEND:-http://localhost:3000}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}
@@ -146,7 +147,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL_BACKEND: ${VITE_API_URL_BACKEND:-http://localhost:8000}
       VITE_WS_URL: ws://localhost:8000
     depends_on:
       - backend

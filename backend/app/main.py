@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
+import os
 
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -46,9 +47,10 @@ app = FastAPI(
 )
 
 # ─── Middleware ───────────────────────────────────────────────
+frontend_url = os.getenv("API_URL_FRONTEND", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://frontend:3000"],
+    allow_origins=[frontend_url, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
