@@ -1,7 +1,7 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Database, Activity, Search,
-  GitMerge, HardDrive, RefreshCw, Zap, Bell, Server
+  GitMerge, HardDrive, RefreshCw, Zap, Bell, Server, LogOut
 } from 'lucide-react'
 
 const navItems = [
@@ -17,6 +17,15 @@ const navItems = [
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate()
+  const username = localStorage.getItem('username') || 'user'
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('username')
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="flex h-screen bg-slate-900 overflow-hidden">
       {/* Sidebar */}
@@ -30,6 +39,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
+
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label }) => (
             <NavLink
@@ -48,10 +58,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-slate-700">
-          <p className="text-xs text-slate-500 text-center">
-            Python · FastAPI · React · PostgreSQL
-          </p>
+
+        {/* User + Logout */}
+        <div className="p-3 border-t border-slate-700 space-y-2">
+          <div className="flex items-center gap-2 px-2">
+            <div className="w-7 h-7 rounded-full bg-indigo-600/30 flex items-center justify-center text-indigo-400 text-xs font-bold uppercase">
+              {username[0]}
+            </div>
+            <span className="text-xs text-slate-400 truncate">{username}</span>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+          >
+            <LogOut size={14} />
+            Sign out
+          </button>
         </div>
       </aside>
 
