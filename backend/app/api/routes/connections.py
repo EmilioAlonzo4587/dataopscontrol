@@ -72,10 +72,12 @@ async def test_connection(conn_id: int, db: AsyncSession = Depends(get_db)):
 
 async def test_connection_internal(conn: Connection) -> dict:
     """Attempt a live connection test against the registered engine."""
+    import asyncio
+    from app.core.security import decrypt_credential
+
     try:
         if conn.motor.value == "PostgreSQL":
             import asyncpg
-            from app.core.security import decrypt_credential
             pg_conn = await asyncpg.connect(
                 host=conn.host, port=conn.port,
                 database=conn.database_name,
@@ -87,11 +89,41 @@ async def test_connection_internal(conn: Connection) -> dict:
             return {"success": True, "message": "PostgreSQL connection successful"}
 
         elif conn.motor.value == "SQL Server":
-            # In production, test via pyodbc
-            return {"success": True, "message": "SQL Server connection simulated (configure ODBC driver)"}
+            import pyodbc
+            password = decrypt_credential(conn.password_enc)
+            conn_str = (
+                f"DRIVER={{ODBC Driver 18 for SQL Server}};"
+                f"SERVER={conn.host},{conn.port};"
+                f"DATABASE={conn.database_name};"
+                f"UID={conn.user_name};"
+                f"PWD={password};"
+                f"TrustServerCertificate=yes;"
+                f"Connection Timeout=5;"
+            )
+
+            def _connect_sqlserver():
+                c = pyodbc.connect(conn_str, timeout=5)
+                c.close()
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _connect_sqlserver)
+            return {"success": True, "message": "SQL Server connection successful"}
 
         elif conn.motor.value == "Oracle":
-            return {"success": True, "message": "Oracle connection simulated (configure cx_Oracle)"}
+            import oracledb
+            password = decrypt_credential(conn.password_enc)
+
+            def _connect_oracle():
+                c = oracledb.connect(
+                    user=conn.user_name,
+                    password=password,
+                    dsn=f"{conn.host}:{conn.port}/{conn.database_name}",
+                )
+                c.close()
+
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, _connect_oracle)
+            return {"success": True, "message": "Oracle connection successful"}
 
         return {"success": False, "message": "Unknown engine"}
 

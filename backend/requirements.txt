@@ -23,3 +23,4 @@ faker==30.3.0
 locust==2.31.8
 python-dotenv==1.0.1
 asyncio-throttle==1.0.2
+oracledb==2.5.0
