@@ -244,14 +244,3 @@ docker compose down
 # Detener y borrar volúmenes (reset total)
 docker compose down -v
 ```
-
----
-
-## Defensa Oral — Puntos Clave
-
-1. **¿Por qué FastAPI?** Async nativo, tipado con Pydantic, Swagger automático, rendimiento comparable a Node.js
-2. **¿Cómo se protegen las credenciales?** Cifrado antes de persistir, nunca en logs ni en respuestas de API
-3. **¿Qué es el Teorema CAP y cómo aplica aquí?** CP: primario garantiza consistencia, réplica acepta eventual consistency
-4. **¿Cómo funciona el cache-aside?** Busca en Redis → si no está, consulta BD → guarda en Redis con TTL
-5. **¿Qué pasa si el backup falla?** El Alert Engine detecta el `BackupStatus.FAILED` y dispara Critical alert + email
-6. **¿Cómo se agregan nuevas reglas de alerta sin redespliegue?** Las reglas están en la tabla `ALERT_RULES`, modificables via API en tiempo real
