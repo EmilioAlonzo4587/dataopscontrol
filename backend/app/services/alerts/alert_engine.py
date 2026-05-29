@@ -2,7 +2,10 @@
 Module 9 — Alert Engine
 Evaluates alert rules against latest metrics.
 Configurable without redeployment (rules stored in DB).
-Sends email and/or dashboard notifications.
+
+Deduplication: an OPEN alert for the same rule+db is only created once.
+A new alert fires only after the previous one is resolved (status ≠ OPEN).
+This prevents infinite email loops when a threshold breach persists across cycles.
 """
 import asyncio
 from datetime import datetime
@@ -74,16 +77,21 @@ async def log_alert(
 async def evaluate_alerts():
     """
     Evaluate all enabled alert rules against the latest metrics.
-    This runs after every health check cycle.
+    Runs after every health-check cycle (every 60 s).
+
+    Deduplication guarantee:
+    - Metric alerts: skipped if an OPEN alert already exists for the same rule+db.
+    - Backup failed alerts: skipped if an alert with condition='backup_failed:<id>' exists.
+    This ensures one email per incident, not one per cycle.
     """
     async with AsyncSessionLocal() as db:
-        # Load all enabled rules
+        # ── Metric rules ──────────────────────────────────────────────────────
         rules_result = await db.execute(
             select(AlertRule).where(AlertRule.enabled == True)
         )
         rules = rules_result.scalars().all()
 
-        # Get latest metrics per connection
+        # Latest snapshot per connection
         subq = (
             select(DBMetric.db_id, func.max(DBMetric.capture_time).label("latest"))
             .group_by(DBMetric.db_id)
@@ -94,16 +102,15 @@ async def evaluate_alerts():
             .join(subq, (DBMetric.db_id == subq.c.db_id) & (DBMetric.capture_time == subq.c.latest))
             .join(Connection, DBMetric.db_id == Connection.id)
         )
-        metrics = metrics_result.all()
 
-        for metric, conn_name in metrics:
+        for metric, conn_name in metrics_result.all():
             metric_map = {
-                "cpu": metric.cpu,
-                "memory": metric.memory,
+                "cpu":         metric.cpu,
+                "memory":      metric.memory,
                 "connections": float(metric.connections),
-                "locks": float(metric.locks),
-                "deadlocks": float(metric.deadlocks),
-                "disk_usage": metric.disk_usage,
+                "locks":       float(metric.locks),
+                "deadlocks":   float(metric.deadlocks),
+                "disk_usage":  metric.disk_usage,
             }
 
             for rule in rules:
@@ -111,35 +118,49 @@ async def evaluate_alerts():
                 if value is None:
                     continue
 
-                triggered = False
-                if rule.operator == ">" and value > rule.threshold:
-                    triggered = True
-                elif rule.operator == ">=" and value >= rule.threshold:
-                    triggered = True
-                elif rule.operator == "<" and value < rule.threshold:
-                    triggered = True
+                triggered = (
+                    (rule.operator == ">"  and value >  rule.threshold) or
+                    (rule.operator == ">=" and value >= rule.threshold) or
+                    (rule.operator == "<"  and value <  rule.threshold)
+                )
+                if not triggered:
+                    continue
 
-                if triggered:
-                    msg = (
-                        f"<b>{conn_name}</b> — Rule <b>{rule.name}</b> triggered. "
-                        f"<b>{rule.metric}</b> = {value:.2f} (threshold: {rule.operator} {rule.threshold})"
-                    )
-                    await log_alert(
-                        db,
-                        condition=rule.condition,
-                        metric_value=value,
-                        severity=rule.severity,
-                        message=msg,
-                        db_id=metric.db_id,
-                        rule_id=rule.id,
-                    )
-                    if "email" in rule.action:
-                        await send_alert_email(
-                            subject=f"{rule.severity.value}: {rule.name} on {conn_name}",
-                            body=msg,
-                        )
+                # Deduplication: skip if the same rule+db already has an OPEN alert.
+                # A new alert fires only after the operator resolves the previous one.
+                existing = await db.execute(
+                    select(AlertLog).where(
+                        AlertLog.rule_id == rule.id,
+                        AlertLog.db_id   == metric.db_id,
+                        AlertLog.status  == AlertStatus.OPEN,
+                    ).limit(1)
+                )
+                if existing.scalar_one_or_none():
+                    continue
 
-        # Check for failed backups
+                msg = (
+                    f"<b>{conn_name}</b> — Rule <b>{rule.name}</b> triggered. "
+                    f"<b>{rule.metric}</b> = {value:.2f} "
+                    f"(threshold: {rule.operator} {rule.threshold})"
+                )
+                await log_alert(
+                    db,
+                    condition=rule.condition,
+                    metric_value=value,
+                    severity=rule.severity,
+                    message=msg,
+                    db_id=metric.db_id,
+                    rule_id=rule.id,
+                )
+                if "email" in rule.action:
+                    await send_alert_email(
+                        subject=f"{rule.severity.value}: {rule.name} on {conn_name}",
+                        body=msg,
+                    )
+
+        # ── Failed backup alerts ───────────────────────────────────────────────
+        # Requirement: Backup fallido → Correo + Alarma (dashboard log).
+        # Uses condition='backup_failed:<backup_id>' as unique key per backup.
         failed_result = await db.execute(
             select(BackupHistory)
             .where(BackupHistory.status == BackupStatus.FAILED)
@@ -147,13 +168,34 @@ async def evaluate_alerts():
             .limit(5)
         )
         for bk in failed_result.scalars().all():
+            unique_condition = f"backup_failed:{bk.id}"
+
+            # One alert per backup — never re-fire for the same backup id
+            dup = await db.execute(
+                select(AlertLog).where(
+                    AlertLog.condition == unique_condition
+                ).limit(1)
+            )
+            if dup.scalar_one_or_none():
+                continue
+
+            msg = (
+                f"<b>Backup FAILED</b>: {bk.file_name} "
+                f"(tipo: {bk.backup_type.value}, "
+                f"motivo: {bk.notes or 'error durante creación'})"
+            )
             await log_alert(
                 db,
-                condition="backup_failed",
-                metric_value=1.0,
+                condition=unique_condition,
+                metric_value=float(bk.id),
                 severity=AlertSeverity.CRITICAL,
-                message=f"Backup FAILED: {bk.file_name} (type: {bk.backup_type.value})",
+                message=msg,
                 db_id=bk.db_id,
+            )
+            # Both email AND dashboard entry as required
+            await send_alert_email(
+                subject=f"CRITICAL: Backup Failed — {bk.file_name}",
+                body=msg,
             )
 
         await db.commit()
@@ -166,12 +208,12 @@ async def seed_default_rules(db: AsyncSession):
         return
 
     default_rules = [
-        AlertRule(name="CPU Warning",      metric="cpu",         operator=">", threshold=85.0,  severity=AlertSeverity.WARNING,  action="email",     condition="cpu > 85"),
-        AlertRule(name="Deadlock Critical",metric="deadlocks",   operator=">", threshold=3.0,   severity=AlertSeverity.CRITICAL, action="dashboard", condition="deadlocks > 3"),
-        AlertRule(name="Disk Critical",    metric="disk_usage",  operator=">", threshold=90.0,  severity=AlertSeverity.CRITICAL, action="email",     condition="disk_usage > 90"),
-        AlertRule(name="Memory Warning",   metric="memory",      operator=">", threshold=85.0,  severity=AlertSeverity.WARNING,  action="email",     condition="memory > 85"),
-        AlertRule(name="Connections Warn", metric="connections", operator=">", threshold=100.0, severity=AlertSeverity.WARNING,  action="dashboard", condition="connections > 100"),
-        AlertRule(name="Locks Warning",    metric="locks",       operator=">", threshold=15.0,  severity=AlertSeverity.WARNING,  action="dashboard", condition="locks > 15"),
+        AlertRule(name="CPU Critical",      metric="cpu",         operator=">",  threshold=85.0,  severity=AlertSeverity.WARNING,  action="email",     condition="cpu > 85"),
+        AlertRule(name="Deadlock Critical", metric="deadlocks",   operator=">",  threshold=3.0,   severity=AlertSeverity.CRITICAL, action="dashboard", condition="deadlocks > 3"),
+        AlertRule(name="Disk Critical",     metric="disk_usage",  operator=">",  threshold=90.0,  severity=AlertSeverity.CRITICAL, action="email",     condition="disk_usage > 90"),
+        AlertRule(name="Memory Warning",    metric="memory",      operator=">",  threshold=85.0,  severity=AlertSeverity.WARNING,  action="email",     condition="memory > 85"),
+        AlertRule(name="Connections Warn",  metric="connections", operator=">",  threshold=100.0, severity=AlertSeverity.WARNING,  action="dashboard", condition="connections > 100"),
+        AlertRule(name="Locks Warning",     metric="locks",       operator=">",  threshold=15.0,  severity=AlertSeverity.WARNING,  action="dashboard", condition="locks > 15"),
     ]
     db.add_all(default_rules)
     await db.commit()

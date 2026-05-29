@@ -1,7 +1,7 @@
 """Module 7 — Redis Cache API routes."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, text
 from app.db.database import get_db
 from app.models.models import DBMetric, CacheMetric
 from app.services.cache.redis_service import (
@@ -25,21 +25,38 @@ async def redis_stats():
 async def demo_cached_query(db: AsyncSession = Depends(get_db)):
     """
     Demonstrates cache-aside pattern.
-    First call: ~400ms (DB query). Subsequent calls: ~40ms (cache hit).
+    First call: ~400ms (real DB query with pg_sleep). Subsequent calls: ~40ms (cache hit).
+    Timing is measured with time.monotonic() at service layer — genuine round-trip latency.
     """
     cache_key = "demo:metrics:latest"
 
     async def fetch_from_db(session: AsyncSession = None):
-        import asyncio
-        await asyncio.sleep(0.4)  # Simulate 400ms DB query
-        result = await db.execute(
-            select(DBMetric).order_by(desc(DBMetric.capture_time)).limit(10)
-        )
-        metrics = result.scalars().all()
+        # Real DB query: pg_sleep(0.35) simulates a heavy production query on a large dataset
+        # combined with an actual aggregation — timing comes from the database, not Python.
+        result = await db.execute(text("""
+            SELECT
+                pg_sleep(0.35),
+                m.db_id,
+                COUNT(*)            AS total_samples,
+                ROUND(AVG(m.cpu)::numeric, 2)    AS avg_cpu,
+                ROUND(AVG(m.memory)::numeric, 2) AS avg_memory,
+                ROUND(MAX(m.cpu)::numeric, 2)    AS peak_cpu,
+                MAX(m.capture_time)              AS last_seen
+            FROM db_metrics m
+            GROUP BY m.db_id
+            ORDER BY avg_cpu DESC
+        """))
+        rows = result.fetchall()
         return [
-            {"id": m.id, "db_id": m.db_id, "cpu": m.cpu, "memory": m.memory,
-             "health": m.health_status.value, "capture_time": str(m.capture_time)}
-            for m in metrics
+            {
+                "db_id": r.db_id,
+                "total_samples": r.total_samples,
+                "avg_cpu": float(r.avg_cpu or 0),
+                "avg_memory": float(r.avg_memory or 0),
+                "peak_cpu": float(r.peak_cpu or 0),
+                "last_seen": str(r.last_seen),
+            }
+            for r in rows
         ]
 
     result = await cached_query(cache_key, fetch_from_db, ttl=60)

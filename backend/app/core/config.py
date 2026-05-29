@@ -34,13 +34,18 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     ALERT_EMAIL_TO: str = "admin@dataops.com"
 
-    # Alert thresholds (configurable without redeployment via DB)
-    DEFAULT_CPU_WARN_THRESHOLD: float = 85.0
-    DEFAULT_MEMORY_WARN_THRESHOLD: float = 85.0
-    DEFAULT_DISK_CRIT_THRESHOLD: float = 90.0
-    DEFAULT_DEADLOCK_CRIT_THRESHOLD: int = 3
+    # Alert thresholds — CRITICAL tier (configurable via .env)
+    DEFAULT_CPU_WARN_THRESHOLD: float = 85.0       # CRITICAL: CPU %
+    DEFAULT_MEMORY_WARN_THRESHOLD: float = 85.0    # CRITICAL: Memory %
+    DEFAULT_DISK_CRIT_THRESHOLD: float = 90.0      # CRITICAL: Disk %
+    DEFAULT_DEADLOCK_CRIT_THRESHOLD: int = 3       # CRITICAL: deadlocks in window
     DEFAULT_REPLICATION_LAG_WARN: float = 10.0
     DEFAULT_MAX_CONNECTIONS_WARN: int = 100
+
+    # Alert thresholds — WARNING tier (lower bounds, also configurable)
+    DEFAULT_CPU_WARN_LOW: float = 70.0             # WARNING: CPU %
+    DEFAULT_MEMORY_WARN_LOW: float = 70.0          # WARNING: Memory %
+    DEFAULT_DISK_WARN_LOW: float = 75.0            # WARNING: Disk %
 
     # Backup
     BACKUP_DIR: str = "/app/backups"

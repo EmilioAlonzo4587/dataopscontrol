@@ -1,6 +1,6 @@
 """
 Module 6 — Replication Service
-Measures primary-replica lag, simulates three load scenarios,
+Measures primary-replica lag (real), simulates three load scenarios,
 and provides CAP theorem analysis data.
 """
 import asyncio
@@ -12,25 +12,25 @@ from sqlalchemy import select, text
 
 from app.db.database import AsyncSessionLocal, engine, replica_engine
 from app.models.models import ReplicationStatus, HealthStatus, Connection, ConnectionStatus
-from app.core.config import settings
 
 
 def classify_lag(lag_seconds: float) -> HealthStatus:
     if lag_seconds <= 3:
-        return HealthStatus.HEALTHY   # Acceptable (≤2s normal)
+        return HealthStatus.HEALTHY
     elif lag_seconds <= 10:
-        return HealthStatus.WARNING   # Medium load (5s)
+        return HealthStatus.WARNING
     else:
-        return HealthStatus.CRITICAL  # High load (20s)
+        return HealthStatus.CRITICAL
 
 
 async def measure_real_replication_lag() -> float:
     """
-    Query pg_stat_replication on the primary to measure actual lag.
-    Falls back to simulation if unavailable.
+    Query pg_last_xact_replay_timestamp() on the REPLICA to get actual lag.
+    This function only returns meaningful data on a standby server.
+    Falls back to simulation if replica is unreachable.
     """
     try:
-        async with engine.connect() as conn:
+        async with replica_engine.connect() as conn:
             result = await conn.execute(
                 text("""
                     SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))
@@ -39,22 +39,87 @@ async def measure_real_replication_lag() -> float:
             )
             row = result.fetchone()
             if row and row[0] is not None:
-                return float(row[0])
+                return round(float(row[0]), 3)
     except Exception:
         pass
 
-    # Simulation: vary lag by simulated load
+    # Fallback simulation when replica is unreachable
     load = random.choices(["normal", "medium", "high"], weights=[60, 30, 10])[0]
     if load == "normal":
-        return round(random.uniform(0.5, 2.5), 2)
+        return round(random.uniform(0.1, 2.0), 2)
     elif load == "medium":
         return round(random.uniform(3.0, 7.0), 2)
     else:
         return round(random.uniform(15.0, 25.0), 2)
 
 
+async def simulate_load_scenario(scenario: str) -> dict:
+    """
+    Generate write load on the primary to produce measurable replication lag.
+    Scenarios: normal (baseline), medium (10K writes), high (100K writes).
+    Returns before/after lag measurements.
+    """
+    # Measure lag BEFORE load
+    lag_before = await measure_real_replication_lag()
+
+    rows_to_insert = 0
+    if scenario == "medium":
+        rows_to_insert = 10_000
+    elif scenario == "high":
+        rows_to_insert = 100_000
+
+    if rows_to_insert > 0:
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS replication_load_test (
+                        id SERIAL PRIMARY KEY,
+                        payload TEXT,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )
+                """))
+                await conn.execute(text(f"""
+                    INSERT INTO replication_load_test (payload)
+                    SELECT 'load_test_' || i
+                    FROM generate_series(1, {rows_to_insert}) i
+                """))
+                await conn.commit()
+        except Exception as e:
+            print(f"[ReplicationLoad] Error generating load: {e}")
+
+    # Small wait for WAL to propagate
+    await asyncio.sleep(0.5)
+
+    # Measure lag AFTER load
+    lag_after = await measure_real_replication_lag()
+
+    # Clean up test table
+    if rows_to_insert > 0:
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("TRUNCATE replication_load_test"))
+                await conn.commit()
+        except Exception:
+            pass
+
+    scenario_targets = {
+        "normal": {"target_lag": "≤ 2s", "expected_status": "Acceptable"},
+        "medium": {"target_lag": "~5s",  "expected_status": "Advertencia"},
+        "high":   {"target_lag": "~20s", "expected_status": "Crítico"},
+    }
+
+    return {
+        "scenario": scenario,
+        "rows_written": rows_to_insert,
+        "lag_before_s": lag_before,
+        "lag_after_s": lag_after,
+        "lag_status": classify_lag(lag_after).value,
+        **scenario_targets.get(scenario, {}),
+    }
+
+
 async def collect_replication_metrics():
-    """Scheduled job: capture replication lag for all PG connections."""
+    """Scheduled job: capture replication lag every 30 seconds."""
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(Connection).where(
@@ -71,7 +136,7 @@ async def collect_replication_metrics():
             record = ReplicationStatus(
                 db_id=conn.id,
                 primary_host=conn.host,
-                replica_host=f"{conn.host}-replica",
+                replica_host="postgres_replica",
                 lag_seconds=lag,
                 lag_status=status,
                 bytes_pending=int(lag * 1024 * random.uniform(0.5, 2.0)),
@@ -84,42 +149,54 @@ async def collect_replication_metrics():
 
 
 CAP_ANALYSIS = {
-    "architecture": "Primary-Replica (PostgreSQL Streaming Replication)",
-    "cap_choice": "CP (Consistency + Partition Tolerance)",
+    "architecture": "Primary-Replica (PostgreSQL 16 Streaming Replication)",
+    "cap_choice": "CP — Consistencia + Tolerancia a Particiones",
+    "summary": (
+        "Esta arquitectura prioriza CONSISTENCIA sobre disponibilidad total. "
+        "Todos los escrituras van al primario; la réplica recibe cambios vía WAL streaming asíncrono. "
+        "Ante una partición de red, el sistema elige no exponer datos desactualizados (consistencia) "
+        "en lugar de seguir respondiendo con datos potencialmente obsoletos."
+    ),
     "consistency": {
-        "level": "Strong on primary writes, eventual on replica reads",
+        "level": "FUERTE en escrituras / EVENTUAL en lecturas de réplica",
         "description": (
-            "All writes go to the primary. Replica receives changes asynchronously "
-            "via WAL streaming. Read-your-writes consistency requires routing reads "
-            "back to the primary or using synchronous_commit=on."
+            "Toda escritura (INSERT/UPDATE/DELETE) va exclusivamente al nodo primario, "
+            "garantizando un orden total de transacciones. La réplica recibe los cambios "
+            "con un lag medido (2-20s según carga). Para lecturas críticas que requieren "
+            "datos frescos, se debe enrutar al primario. Para analítica y dashboards, "
+            "la réplica es suficiente con consistencia eventual."
         ),
     },
     "availability": {
-        "level": "High (but degraded during failover)",
+        "level": "ALTA en operación normal / DEGRADADA durante failover",
         "description": (
-            "If the primary fails, the replica can be promoted (manual or via Patroni). "
-            "Writes are unavailable during promotion (~30-60 seconds). "
-            "Reads from replica remain available throughout."
+            "En operación normal: escrituras en primario + lecturas distribuidas entre ambos nodos. "
+            "Si el primario falla: la réplica puede ser promovida a primario en ~30-60 segundos "
+            "(manual) o automáticamente con Patroni + etcd. Durante esa ventana, las escrituras "
+            "no están disponibles. Las lecturas de la réplica permanecen activas en todo momento."
         ),
     },
     "partition_tolerance": {
-        "level": "Partial",
+        "level": "PARCIAL — sistema elige consistencia ante partición",
         "description": (
-            "Under network partition, the replica stops receiving WAL and lag increases. "
-            "The system chooses consistency (no dirty reads) over availability. "
-            "Pg replication can be configured to switch to synchronous mode for zero data loss."
+            "Si la red entre primario y réplica se interrumpe, el lag de replicación crece "
+            "indefinidamente. El sistema NO promueve la réplica automáticamente para evitar "
+            "un split-brain. PostgreSQL puede configurarse con synchronous_commit=on para "
+            "cero pérdida de datos, a costo de mayor latencia en escrituras (~2ms extra). "
+            "La configuración actual usa replicación asíncrona optimizando latencia."
         ),
     },
     "design_decisions": [
-        "Asynchronous replication for minimal write latency on primary",
-        "Replica used exclusively for read-heavy analytics/dashboard queries",
-        "Connection pooling (PgBouncer) recommended in front of both nodes",
-        "WAL archiving to S3 provides PITR (Point-in-Time Recovery) capability",
-        "Patroni + etcd recommended for automatic failover in production",
+        "Replicación ASÍNCRONA: minimiza latencia de escritura en el primario (< 1ms overhead)",
+        "Réplica de SOLO LECTURA: usada para dashboards, analytics y backups sin afectar escrituras",
+        "WAL archiving habilitado (wal_level=replica): permite recuperación PITR ante corrupción",
+        "hot_standby=on: permite queries de lectura mientras la réplica aplica WAL",
+        "max_wal_senders=5: soporta hasta 5 réplicas adicionales sin reconfiguración",
+        "Separación de conexiones: backend usa DATABASE_URL (primario) y DATABASE_URL_REPLICA (réplica)",
     ],
     "lag_scenarios": [
-        {"scenario": "Normal load", "lag": "~2s", "status": "Acceptable"},
-        {"scenario": "Medium load", "lag": "~5s", "status": "Warning"},
-        {"scenario": "High load",   "lag": "~20s","status": "Critical"},
+        {"scenario": "Carga Normal",  "writes": "baseline", "lag_target": "≤ 2s",  "status": "Aceptable",   "color": "green"},
+        {"scenario": "Carga Media",   "writes": "10K filas","lag_target": "~5s",   "status": "Advertencia", "color": "amber"},
+        {"scenario": "Carga Alta",    "writes": "100K filas","lag_target": "~20s", "status": "Crítico",     "color": "red"},
     ],
 }

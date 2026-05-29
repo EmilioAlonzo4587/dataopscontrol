@@ -60,7 +60,10 @@ export const simulateDisaster = (dbId: number, snapshotId: number) =>
 
 // ─── Replication ──────────────────────────────────────────────
 export const getReplicationStatus = () => api.get('/api/replication/status')
+export const getCurrentLag = () => api.get('/api/replication/current-lag')
 export const getCapAnalysis = () => api.get('/api/replication/cap-analysis')
+export const simulateReplicationScenario = (scenario: string) =>
+  api.post(`/api/replication/simulate/${scenario}`, {}, { timeout: 120000 })
 
 // ─── Cache ────────────────────────────────────────────────────
 export const getCacheStats = () => api.get('/api/cache/stats')

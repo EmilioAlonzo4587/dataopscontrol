@@ -84,6 +84,8 @@ async def create_backup(
     Execute a backup operation for the given connection.
     For simulation environments, creates a JSON dump of metadata.
     In production, calls pg_dump, BACKUP DATABASE, or expdp.
+    Returns a FAILED record (with error notes) if any step raises an exception,
+    so the alert engine can detect and email on backup failures.
     """
     start_time = datetime.utcnow()
     ts = start_time.strftime("%Y%m%d_%H%M%S")
@@ -91,58 +93,85 @@ async def create_backup(
     if snapshot_name:
         filename = f"SNAPSHOT_{snapshot_name}_{ts}.bak"
 
-    file_path = BACKUP_DIR / filename
+    try:
+        file_path = BACKUP_DIR / filename
 
-    # ── Simulate backup content ──────────────────────────────
-    backup_data = {
-        "connection": connection.nombre,
-        "engine": connection.motor.value,
-        "host": connection.host,
-        "database": connection.database_name,
-        "backup_type": backup_type.value,
-        "timestamp": start_time.isoformat(),
-        "restore_point": ts,
-        "parent_id": parent_id,
-        "snapshot_name": snapshot_name,
-        "simulated_data": "x" * 1024 * 10,  # 10 KB placeholder
-    }
+        # ── Simulate backup content ──────────────────────────────
+        backup_data = {
+            "connection": connection.nombre,
+            "engine": connection.motor.value,
+            "host": connection.host,
+            "database": connection.database_name,
+            "backup_type": backup_type.value,
+            "timestamp": start_time.isoformat(),
+            "restore_point": ts,
+            "parent_id": parent_id,
+            "snapshot_name": snapshot_name,
+            "simulated_data": "x" * 1024 * 10,  # 10 KB placeholder
+        }
 
-    async with aiofiles.open(file_path, "w") as f:
-        await f.write(json.dumps(backup_data, indent=2))
+        async with aiofiles.open(file_path, "w") as f:
+            await f.write(json.dumps(backup_data, indent=2))
 
-    end_time = datetime.utcnow()
-    duration = (end_time - start_time).total_seconds()
-    file_size_mb = file_path.stat().st_size / (1024 * 1024)
+        end_time = datetime.utcnow()
+        duration = (end_time - start_time).total_seconds()
+        file_size_mb = file_path.stat().st_size / (1024 * 1024)
 
-    md5, sha256 = compute_checksums(file_path)
+        md5, sha256 = compute_checksums(file_path)
 
-    # ── Upload to S3 ──────────────────────────────────────────
-    s3_key = f"backups/{connection.nombre}/{backup_type.value}/{filename}"
-    s3_url = await upload_to_s3(file_path, s3_key)
+        # ── Upload to S3 ──────────────────────────────────────────
+        s3_key = f"backups/{connection.nombre}/{backup_type.value}/{filename}"
+        s3_url = await upload_to_s3(file_path, s3_key)
 
-    # ── Calculate SLA compliance ──────────────────────────────
-    rpo = settings.RPO_TARGET_MINUTES
-    rto = settings.RTO_TARGET_MINUTES
-    sla_met = duration / 60 <= rto  # simplified check
+        # ── Calculate SLA compliance ──────────────────────────────
+        rpo = settings.RPO_TARGET_MINUTES
+        rto = settings.RTO_TARGET_MINUTES
+        sla_met = duration / 60 <= rto
 
-    backup_record = BackupHistory(
-        db_id=connection.id,
-        backup_type=backup_type,
-        status=BackupStatus.SUCCESS,
-        file_name=filename,
-        file_size_mb=round(file_size_mb, 4),
-        duration_secs=round(duration, 2),
-        restore_point=ts,
-        parent_id=parent_id,
-        s3_url=s3_url,
-        checksum_md5=md5,
-        checksum_sha256=sha256,
-        sla_met=sla_met,
-        rpo_minutes=rpo,
-        rto_minutes=rto,
-        notes=f"Backup created via DataOps Control Center. Snapshot: {snapshot_name}" if snapshot_name else None,
-        created_at=start_time,
-    )
+        backup_record = BackupHistory(
+            db_id=connection.id,
+            backup_type=backup_type,
+            status=BackupStatus.SUCCESS,
+            file_name=filename,
+            file_size_mb=round(file_size_mb, 4),
+            duration_secs=round(duration, 2),
+            restore_point=ts,
+            parent_id=parent_id,
+            s3_url=s3_url,
+            checksum_md5=md5,
+            checksum_sha256=sha256,
+            sla_met=sla_met,
+            rpo_minutes=rpo,
+            rto_minutes=rto,
+            notes=(
+                f"Backup created via DataOps Control Center. Snapshot: {snapshot_name}"
+                if snapshot_name else None
+            ),
+            created_at=start_time,
+        )
+
+    except Exception as exc:
+        # Any failure → persist a FAILED record so alert engine can notify
+        print(f"[BackupService] Backup FAILED for {connection.nombre}: {exc}")
+        backup_record = BackupHistory(
+            db_id=connection.id,
+            backup_type=backup_type,
+            status=BackupStatus.FAILED,
+            file_name=filename,
+            file_size_mb=0.0,
+            duration_secs=round((datetime.utcnow() - start_time).total_seconds(), 2),
+            restore_point=ts,
+            parent_id=parent_id,
+            s3_url=None,
+            checksum_md5=None,
+            checksum_sha256=None,
+            sla_met=False,
+            rpo_minutes=settings.RPO_TARGET_MINUTES,
+            rto_minutes=settings.RTO_TARGET_MINUTES,
+            notes=f"ERROR: {str(exc)[:500]}",
+            created_at=start_time,
+        )
+
     db.add(backup_record)
     await db.commit()
     await db.refresh(backup_record)
