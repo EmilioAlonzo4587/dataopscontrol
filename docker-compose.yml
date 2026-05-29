@@ -28,7 +28,7 @@ services:
     networks:
       - dataops_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dataops}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dataops} -d ${POSTGRES_DB:-dataops_primary}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -57,9 +57,9 @@ services:
           echo 'Waiting for primary...'
           sleep 2
         done
-        echo 'standby_mode = on' >> /var/lib/postgresql/data/recovery.conf
+        chown -R postgres:postgres /var/lib/postgresql/data
         chmod 0700 /var/lib/postgresql/data
-        postgres
+        exec gosu postgres postgres
       "
 
   sqlserver:
