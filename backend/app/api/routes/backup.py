@@ -85,11 +85,11 @@ async def simulate_disaster(
 @router.get("/sla-report")
 async def sla_report(db: AsyncSession = Depends(get_db)):
     """SLA compliance report for BI dashboard."""
-    from sqlalchemy import func
+    from sqlalchemy import func, case
     result = await db.execute(
         select(
             func.count().label("total"),
-            func.sum((BackupHistory.sla_met == True).cast("int")).label("met"),
+            func.sum(case((BackupHistory.sla_met == True, 1), else_=0)).label("met"),
             func.avg(BackupHistory.duration_secs).label("avg_duration"),
             func.avg(BackupHistory.file_size_mb).label("avg_size_mb"),
         )

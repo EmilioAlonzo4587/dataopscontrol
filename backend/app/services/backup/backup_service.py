@@ -7,7 +7,7 @@ import os
 import json
 import hashlib
 import asyncio
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -61,7 +61,7 @@ async def upload_to_s3(file_path: Path, s3_key: str) -> Optional[str]:
 
 async def enforce_retention_policy(db: AsyncSession):
     """Delete backups older than BACKUP_RETENTION_DAYS."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.BACKUP_RETENTION_DAYS)
+    cutoff = datetime.utcnow() - timedelta(days=settings.BACKUP_RETENTION_DAYS)
     result = await db.execute(
         select(BackupHistory).where(BackupHistory.created_at < cutoff)
     )
@@ -85,7 +85,7 @@ async def create_backup(
     For simulation environments, creates a JSON dump of metadata.
     In production, calls pg_dump, BACKUP DATABASE, or expdp.
     """
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.utcnow()
     ts = start_time.strftime("%Y%m%d_%H%M%S")
     filename = f"{connection.nombre}_{backup_type.value}_{ts}.bak"
     if snapshot_name:
@@ -110,7 +110,7 @@ async def create_backup(
     async with aiofiles.open(file_path, "w") as f:
         await f.write(json.dumps(backup_data, indent=2))
 
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.utcnow()
     duration = (end_time - start_time).total_seconds()
     file_size_mb = file_path.stat().st_size / (1024 * 1024)
 

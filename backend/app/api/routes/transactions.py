@@ -2,7 +2,7 @@
 import asyncio
 import random
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 from typing import List
 from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ async def simulate_concurrent_session(db_id: int, session_id: str, operation: st
         weights=lock_weights,
     )[0]
 
-    start = datetime.now(timezone.utc)
+    start = datetime.utcnow()
     end = start + timedelta(milliseconds=duration_ms)
 
     return {
@@ -43,7 +43,7 @@ async def simulate_concurrent_session(db_id: int, session_id: str, operation: st
 
 @router.post("/simulate")
 async def simulate_concurrency(
-    db_id: int = 1,
+    db_id: int = None,
     num_users: int = 100,
     background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
@@ -52,6 +52,15 @@ async def simulate_concurrency(
     Simulate N concurrent users executing mixed DML operations.
     Module 4 requirement: minimum 100 concurrent users.
     """
+    from sqlalchemy import select as sa_select
+    from app.models.models import Connection
+    conn_result = await db.execute(sa_select(Connection).where(Connection.id == db_id).limit(1)) if db_id else None
+    valid = conn_result.scalar_one_or_none() if conn_result else None
+    if not valid:
+        fallback = await db.execute(sa_select(Connection).limit(1))
+        first = fallback.scalar_one_or_none()
+        db_id = first.id if first else db_id
+
     operations = ["INSERT", "UPDATE", "DELETE", "SELECT"]
     tasks = []
 

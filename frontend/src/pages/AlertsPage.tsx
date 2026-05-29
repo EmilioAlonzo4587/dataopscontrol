@@ -1,26 +1,64 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getAlertRules, createAlertRule, deleteAlertRule, getAlertLog, resolveAlert, getAlertSummary } from '../services/api'
-import { Bell, Plus, Trash2, CheckCircle } from 'lucide-react'
+import { getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, getAlertLog, resolveAlert, getAlertSummary } from '../services/api'
+import { Bell, Plus, Trash2, CheckCircle, Pencil, X } from 'lucide-react'
 
 const SEV_BADGE: any = { Warning: 'badge-warning', Critical: 'badge-critical', Info: 'text-blue-400' }
 const STATUS_BADGE: any = { OPEN: 'badge-critical', RESOLVED: 'badge-healthy', IGNORED: 'text-slate-400' }
 
+const EMPTY_FORM = { name: '', metric: 'cpu', operator: '>', threshold: 85, severity: 'Warning', action: 'email', condition: 'cpu > 85', enabled: true }
+
 export default function AlertsPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', metric: 'cpu', operator: '>', threshold: 85, severity: 'Warning', action: 'email', condition: 'cpu > 85', enabled: true })
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState<any>(EMPTY_FORM)
 
   const { data: rules = [] } = useQuery({ queryKey: ['alert-rules'], queryFn: () => getAlertRules().then(r => r.data) })
   const { data: logs = [] } = useQuery({ queryKey: ['alert-log'], queryFn: () => getAlertLog().then(r => r.data), refetchInterval: 15000 })
   const { data: summary = [] } = useQuery({ queryKey: ['alert-summary'], queryFn: () => getAlertSummary().then(r => r.data) })
 
-  const createMut = useMutation({ mutationFn: createAlertRule, onSuccess: () => { qc.invalidateQueries({ queryKey: ['alert-rules'] }); setShowForm(false) } })
+  const createMut = useMutation({
+    mutationFn: createAlertRule,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['alert-rules'] }); closeForm() }
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => updateAlertRule(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['alert-rules'] }); closeForm() }
+  })
   const deleteMut = useMutation({ mutationFn: deleteAlertRule, onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-rules'] }) })
   const resolveMut = useMutation({ mutationFn: resolveAlert, onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-log'] }) })
 
   const criticalOpen = (logs as any[]).filter((l: any) => l.severity === 'Critical' && l.status === 'OPEN').length
   const totalOpen = (logs as any[]).filter((l: any) => l.status === 'OPEN').length
+
+  function openCreate() {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setShowForm(true)
+  }
+
+  function openEdit(rule: any) {
+    setEditingId(rule.id)
+    setForm({ name: rule.name, metric: rule.metric, operator: rule.operator, threshold: rule.threshold, severity: rule.severity, action: rule.action, condition: rule.condition, enabled: rule.enabled })
+    setShowForm(true)
+  }
+
+  function closeForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
+  function handleSubmit() {
+    if (editingId !== null) {
+      updateMut.mutate({ id: editingId, data: form })
+    } else {
+      createMut.mutate(form)
+    }
+  }
+
+  const isPending = createMut.isPending || updateMut.isPending
 
   return (
     <div className="p-6 space-y-6">
@@ -35,7 +73,7 @@ export default function AlertsPage() {
               <Bell size={12} /> {criticalOpen} Critical Open
             </span>
           )}
-          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
+          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
             <Plus size={14} /> New Rule
           </button>
         </div>
@@ -52,10 +90,15 @@ export default function AlertsPage() {
         </div>
       )}
 
-      {/* New Rule Form */}
+      {/* Create / Edit Form */}
       {showForm && (
         <div className="card">
-          <h2 className="text-sm font-semibold text-slate-300 mb-4">Create Alert Rule (no redeployment needed)</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300">
+              {editingId !== null ? 'Edit Alert Rule' : 'Create Alert Rule (no redeployment needed)'}
+            </h2>
+            <button onClick={closeForm} className="text-slate-400 hover:text-white"><X size={14} /></button>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {[
               { k: 'name', l: 'Rule Name', t: 'text' },
@@ -63,49 +106,56 @@ export default function AlertsPage() {
             ].map(({ k, l, t }) => (
               <div key={k}>
                 <label className="text-xs text-slate-400 block mb-1">{l}</label>
-                <input type={t} value={(form as any)[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
+                <input type={t} value={form[k]} onChange={e => setForm((p: any) => ({ ...p, [k]: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2" />
               </div>
             ))}
             <div>
               <label className="text-xs text-slate-400 block mb-1">Metric</label>
-              <select value={form.metric} onChange={e => setForm(p => ({ ...p, metric: e.target.value }))}
+              <select value={form.metric} onChange={e => setForm((p: any) => ({ ...p, metric: e.target.value }))}
                 className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2">
                 {['cpu','memory','disk_usage','connections','locks','deadlocks'].map(m => <option key={m}>{m}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Operator</label>
-              <select value={form.operator} onChange={e => setForm(p => ({ ...p, operator: e.target.value }))}
+              <select value={form.operator} onChange={e => setForm((p: any) => ({ ...p, operator: e.target.value }))}
                 className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2">
                 {['>','>=','<'].map(o => <option key={o}>{o}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Threshold</label>
-              <input type="number" value={form.threshold} onChange={e => setForm(p => ({ ...p, threshold: +e.target.value }))}
+              <input type="number" value={form.threshold} onChange={e => setForm((p: any) => ({ ...p, threshold: +e.target.value }))}
                 className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2" />
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Severity</label>
-              <select value={form.severity} onChange={e => setForm(p => ({ ...p, severity: e.target.value }))}
+              <select value={form.severity} onChange={e => setForm((p: any) => ({ ...p, severity: e.target.value }))}
                 className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2">
                 <option>Warning</option><option>Critical</option><option>Info</option>
               </select>
             </div>
             <div>
               <label className="text-xs text-slate-400 block mb-1">Action</label>
-              <select value={form.action} onChange={e => setForm(p => ({ ...p, action: e.target.value }))}
+              <select value={form.action} onChange={e => setForm((p: any) => ({ ...p, action: e.target.value }))}
                 className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2">
                 <option>email</option><option>dashboard</option><option>both</option>
               </select>
             </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Enabled</label>
+              <select value={form.enabled ? 'true' : 'false'} onChange={e => setForm((p: any) => ({ ...p, enabled: e.target.value === 'true' }))}
+                className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2">
+                <option value="true">Yes</option><option value="false">No</option>
+              </select>
+            </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={() => createMut.mutate(form as any)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
-              {createMut.isPending ? 'Saving…' : 'Create Rule'}
+            <button onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
+              {isPending ? 'Saving…' : editingId !== null ? 'Save Changes' : 'Create Rule'}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
+            <button onClick={closeForm} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
           </div>
         </div>
       )}
@@ -124,6 +174,7 @@ export default function AlertsPage() {
                 <div className="flex items-center gap-2">
                   <span className={SEV_BADGE[r.severity]}>{r.severity}</span>
                   <span className={r.enabled ? 'badge-healthy' : 'badge-warning'}>{r.enabled ? 'ON' : 'OFF'}</span>
+                  <button onClick={() => openEdit(r)} className="text-indigo-400 hover:text-indigo-300"><Pencil size={12} /></button>
                   <button onClick={() => deleteMut.mutate(r.id)} className="text-red-400 hover:text-red-300"><Trash2 size={12} /></button>
                 </div>
               </div>

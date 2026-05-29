@@ -5,7 +5,7 @@ Configurable without redeployment (rules stored in DB).
 Sends email and/or dashboard notifications.
 """
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import select, func
@@ -41,6 +41,7 @@ async def send_alert_email(subject: str, body: str):
             password=settings.SMTP_PASSWORD,
             start_tls=True,
         )
+        print(f"[ALERT EMAIL SENT] {subject} → {settings.ALERT_EMAIL_TO}")
     except Exception as e:
         print(f"[ALERT EMAIL ERROR] {e}")
 
@@ -63,7 +64,7 @@ async def log_alert(
         severity=severity,
         status=AlertStatus.OPEN,
         message=message,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.utcnow(),
     )
     db.add(alert)
     await db.flush()

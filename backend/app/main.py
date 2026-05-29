@@ -16,6 +16,7 @@ from app.api.routes import (
     connections,
     metrics,
     queries,
+    query_optimizer,
     transactions,
     backup,
     replication,
@@ -65,7 +66,8 @@ app.mount("/metrics", metrics_app)
 app.include_router(auth.router,        prefix="/api/auth",        tags=["Authentication"])
 app.include_router(connections.router, prefix="/api/connections", tags=["Connections"])
 app.include_router(metrics.router,     prefix="/api/metrics",     tags=["Metrics"])
-app.include_router(queries.router,     prefix="/api/queries",     tags=["Query Analyzer"])
+app.include_router(queries.router,          prefix="/api/queries",          tags=["Query Analyzer"])
+app.include_router(query_optimizer.router,  prefix="/api/queries/optimizer", tags=["Query Optimizer"])
 app.include_router(transactions.router,prefix="/api/transactions",tags=["Concurrency"])
 app.include_router(backup.router,      prefix="/api/backup",      tags=["Backup & Recovery"])
 app.include_router(replication.router, prefix="/api/replication", tags=["Replication"])

@@ -1,8 +1,8 @@
 """Module 8 — Business Intelligence Dashboard API routes."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
-from datetime import datetime, timezone, timedelta
+from sqlalchemy import select, func, desc, case
+from datetime import datetime, timedelta
 
 from app.db.database import get_db
 from app.models.models import (
@@ -35,7 +35,7 @@ async def dashboard_overview(db: AsyncSession = Depends(get_db)):
     # Backup SLA
     sla_result = await db.execute(
         select(func.count().label("total"),
-               func.sum((BackupHistory.sla_met == True).cast("int")).label("met"))
+               func.sum(case((BackupHistory.sla_met == True, 1), else_=0)).label("met"))
     )
     sla = sla_result.one()
     total_bk = sla.total or 0
@@ -51,19 +51,19 @@ async def dashboard_overview(db: AsyncSession = Depends(get_db)):
     # Average replication lag
     lag_result = await db.execute(
         select(func.avg(ReplicationStatus.lag_seconds))
-        .where(ReplicationStatus.captured_at > datetime.now(timezone.utc) - timedelta(minutes=5))
+        .where(ReplicationStatus.captured_at > datetime.utcnow() - timedelta(minutes=5))
     )
     avg_lag = lag_result.scalar() or 0
 
     # Availability (pct time in Healthy state last 24h)
     total_24h = await db.execute(
         select(func.count()).select_from(DBMetric)
-        .where(DBMetric.capture_time > datetime.now(timezone.utc) - timedelta(hours=24))
+        .where(DBMetric.capture_time > datetime.utcnow() - timedelta(hours=24))
     )
     healthy_24h = await db.execute(
         select(func.count()).select_from(DBMetric)
         .where(DBMetric.health_status == HealthStatus.HEALTHY,
-               DBMetric.capture_time > datetime.now(timezone.utc) - timedelta(hours=24))
+               DBMetric.capture_time > datetime.utcnow() - timedelta(hours=24))
     )
     total_n = total_24h.scalar() or 1
     healthy_n = healthy_24h.scalar() or 0
@@ -87,7 +87,7 @@ async def availability_by_db(db: AsyncSession = Depends(get_db)):
         select(
             Connection.id, Connection.nombre, Connection.motor,
             func.count(DBMetric.id).label("total_checks"),
-            func.sum((DBMetric.health_status == HealthStatus.HEALTHY).cast("int")).label("healthy_checks"),
+            func.sum(case((DBMetric.health_status == HealthStatus.HEALTHY, 1), else_=0)).label("healthy_checks"),
         )
         .join(DBMetric, Connection.id == DBMetric.db_id)
         .group_by(Connection.id, Connection.nombre, Connection.motor)

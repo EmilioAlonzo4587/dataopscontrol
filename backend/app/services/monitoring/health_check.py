@@ -5,9 +5,10 @@ classifies health status and triggers alerts on threshold breaches.
 """
 import asyncio
 import random
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
+import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,10 +16,18 @@ from app.db.database import AsyncSessionLocal
 from app.models.models import Connection, DBMetric, HealthStatus, ConnectionStatus
 from app.core.config import settings
 
+DOCKER_SOCKET = "/var/run/docker.sock"
+
+# Maps connection host → Docker container name
+CONTAINER_MAP = {
+    "postgres_primary": "dataops_postgres_primary",
+    "sqlserver": "dataops_sqlserver",
+    "redis": "dataops_redis",
+}
+
 
 def classify_health(cpu: float, memory: float, connections: int,
                     deadlocks: int, disk: float) -> HealthStatus:
-    """Classify DB health based on configurable thresholds."""
     if (cpu > settings.DEFAULT_CPU_WARN_THRESHOLD or
             memory > settings.DEFAULT_MEMORY_WARN_THRESHOLD or
             disk > settings.DEFAULT_DISK_CRIT_THRESHOLD or
@@ -30,30 +39,63 @@ def classify_health(cpu: float, memory: float, connections: int,
     return HealthStatus.HEALTHY
 
 
-async def simulate_db_metrics(connection: Connection) -> dict:
+async def get_docker_stats(container_name: str) -> Optional[dict]:
     """
-    Simulate real metric collection from a database engine.
-    In production, this calls pg_stat_activity, sys.dm_os_wait_stats, etc.
+    Query Docker Stats API via Unix socket for real CPU% and memory% of a container.
+    CPU formula from Docker docs: (cpu_delta / system_delta) * num_cpus * 100
+    Memory: (usage - cache) / limit * 100
     """
-    import random
-    # Simulate realistic metric variation
-    base_cpu = random.uniform(5, 95)
-    return {
-        "cpu": round(base_cpu, 2),
-        "memory": round(random.uniform(20, 90), 2),
-        "connections": random.randint(1, 150),
-        "locks": random.randint(0, 20),
-        "deadlocks": random.randint(0, 5),
-        "disk_usage": round(random.uniform(10, 95), 2),
-    }
+    try:
+        transport = httpx.AsyncHTTPTransport(uds=DOCKER_SOCKET)
+        async with httpx.AsyncClient(transport=transport, timeout=5) as client:
+            resp = await client.get(
+                f"http://localhost/containers/{container_name}/stats?stream=false"
+            )
+            if resp.status_code != 200:
+                return None
+            stats = resp.json()
+
+        cpu_stats = stats.get("cpu_stats", {})
+        precpu_stats = stats.get("precpu_stats", {})
+        cpu_delta = (
+            cpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+            - precpu_stats.get("cpu_usage", {}).get("total_usage", 0)
+        )
+        system_delta = (
+            cpu_stats.get("system_cpu_usage", 0)
+            - precpu_stats.get("system_cpu_usage", 0)
+        )
+        num_cpus = cpu_stats.get("online_cpus") or len(
+            cpu_stats.get("cpu_usage", {}).get("percpu_usage", [1])
+        )
+        cpu_pct = round((cpu_delta / system_delta) * num_cpus * 100.0, 2) if system_delta > 0 else 0.0
+
+        mem_stats = stats.get("memory_stats", {})
+        mem_usage = mem_stats.get("usage", 0)
+        mem_limit = mem_stats.get("limit", 1)
+        # Subtract page cache so we get real process RSS
+        cache = mem_stats.get("stats", {}).get("inactive_file", 0) or mem_stats.get("stats", {}).get("cache", 0)
+        real_mem = max(mem_usage - cache, 0)
+        mem_pct = round(real_mem / mem_limit * 100.0, 2) if mem_limit > 0 else 0.0
+
+        return {"cpu": cpu_pct, "memory": mem_pct}
+    except Exception:
+        return None
 
 
 async def collect_real_postgres_metrics(connection: Connection) -> Optional[dict]:
-    """Attempt to collect real metrics from a PostgreSQL instance."""
+    """
+    Collect real metrics from a PostgreSQL instance.
+
+    Per-database:  connections, deadlocks, disk (pg_database_size)
+    Per-instance:  locks (pg_locks filtered by database OID), CPU/memory (Docker Stats)
+                   CPU/memory cannot be isolated per-DB at the OS level; they reflect
+                   the whole PostgreSQL container when multiple databases share one instance.
+    """
     try:
         import asyncpg
         from app.core.security import decrypt_credential
-        conn = await asyncpg.connect(
+        pg = await asyncpg.connect(
             host=connection.host,
             port=connection.port,
             database=connection.database_name,
@@ -61,35 +103,77 @@ async def collect_real_postgres_metrics(connection: Connection) -> Optional[dict
             password=decrypt_credential(connection.password_enc),
             timeout=5,
         )
-        # pg_stat_database for connection count
-        row = await conn.fetchrow(
-            "SELECT numbackends FROM pg_stat_database WHERE datname = $1",
+
+        # Per-database stats (connections, deadlocks, disk)
+        db_row = await pg.fetchrow(
+            """
+            SELECT numbackends,
+                   deadlocks,
+                   pg_database_size(datname) AS db_size_bytes
+            FROM pg_stat_database
+            WHERE datname = $1
+            """,
             connection.database_name,
         )
-        active_connections = row["numbackends"] if row else 0
+        active_connections = db_row["numbackends"] if db_row else 0
+        deadlocks = db_row["deadlocks"] if db_row else 0
+        db_size_bytes = float(db_row["db_size_bytes"] or 0) if db_row else 0.0
 
-        # Deadlock stats
-        dl_row = await conn.fetchrow(
-            "SELECT deadlocks FROM pg_stat_database WHERE datname = $1",
+        # Locks filtered to this database only
+        locks_row = await pg.fetchrow(
+            """
+            SELECT count(*) AS cnt
+            FROM pg_locks l
+            JOIN pg_database d ON d.oid = l.database
+            WHERE d.datname = $1
+            """,
             connection.database_name,
         )
-        deadlocks = dl_row["deadlocks"] if dl_row else 0
-
-        # Locks
-        locks_row = await conn.fetchrow("SELECT count(*) AS cnt FROM pg_locks")
         locks = locks_row["cnt"] if locks_row else 0
 
-        await conn.close()
+        # Total data directory size for disk % denominator
+        total_row = await pg.fetchrow(
+            "SELECT sum(pg_database_size(datname)) AS total FROM pg_stat_database"
+        )
+        total_bytes = float(total_row["total"] or 1) if total_row else 1.0
+
+        await pg.close()
+
+        # Disk % = this DB's size relative to all databases in the instance
+        disk_pct = round(db_size_bytes / total_bytes * 100, 2) if total_bytes > 0 else 0.0
+
+        # CPU/memory from Docker Stats (container-level — same value for all DBs in the instance)
+        container = CONTAINER_MAP.get(connection.host)
+        docker_stats = await get_docker_stats(container) if container else None
+
+        if docker_stats:
+            cpu = docker_stats["cpu"]
+            memory = docker_stats["memory"]
+        else:
+            cpu = round(random.uniform(5, 80), 2)
+            memory = round(random.uniform(20, 75), 2)
+
         return {
-            "cpu": round(random.uniform(5, 80), 2),  # CPU not directly accessible via SQL
-            "memory": round(random.uniform(20, 75), 2),
+            "cpu": cpu,
+            "memory": memory,
             "connections": active_connections,
             "locks": locks,
             "deadlocks": deadlocks,
-            "disk_usage": round(random.uniform(10, 70), 2),
+            "disk_usage": disk_pct,
         }
     except Exception:
         return None
+
+
+async def simulate_db_metrics(connection: Connection) -> dict:
+    return {
+        "cpu": round(random.uniform(5, 95), 2),
+        "memory": round(random.uniform(20, 90), 2),
+        "connections": random.randint(1, 150),
+        "locks": random.randint(0, 20),
+        "deadlocks": random.randint(0, 5),
+        "disk_usage": round(random.uniform(10, 95), 2),
+    }
 
 
 async def run_health_check():
@@ -103,11 +187,9 @@ async def run_health_check():
         for conn in connections:
             metrics_data = None
 
-            # Try real collection for PostgreSQL
             if conn.motor.value == "PostgreSQL":
                 metrics_data = await collect_real_postgres_metrics(conn)
 
-            # Fallback to simulation
             if metrics_data is None:
                 metrics_data = await simulate_db_metrics(conn)
 
@@ -128,19 +210,17 @@ async def run_health_check():
                 deadlocks=metrics_data["deadlocks"],
                 disk_usage=metrics_data["disk_usage"],
                 health_status=health,
-                capture_time=datetime.now(timezone.utc),
+                capture_time=datetime.utcnow(),
             )
             db.add(metric)
 
-            # Update connection status
             await db.execute(
                 update(Connection)
                 .where(Connection.id == conn.id)
-                .values(status=ConnectionStatus.ACTIVE, last_checked=datetime.now(timezone.utc))
+                .values(status=ConnectionStatus.ACTIVE, last_checked=datetime.utcnow())
             )
 
         await db.commit()
 
-        # Trigger alert evaluation after metrics collection
         from app.services.alerts.alert_engine import evaluate_alerts
         await evaluate_alerts()

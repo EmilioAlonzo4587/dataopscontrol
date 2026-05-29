@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, update
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.db.database import get_db
 from app.models.models import AlertLog, AlertRule, AlertStatus
@@ -43,8 +43,20 @@ async def delete_rule(rule_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AlertRule).where(AlertRule.id == rule_id))
     rule = result.scalar_one_or_none()
     if rule:
+        await db.execute(update(AlertLog).where(AlertLog.rule_id == rule_id).values(rule_id=None))
         await db.delete(rule)
         await db.commit()
+
+
+@router.get("/log/summary")
+async def alert_summary(db: AsyncSession = Depends(get_db)):
+    from sqlalchemy import func
+    result = await db.execute(
+        select(AlertLog.severity, AlertLog.status, func.count().label("count"))
+        .group_by(AlertLog.severity, AlertLog.status)
+    )
+    rows = result.all()
+    return [{"severity": r.severity.value, "status": r.status.value, "count": r.count} for r in rows]
 
 
 @router.get("/log", response_model=List[AlertLogOut])
@@ -68,18 +80,7 @@ async def resolve_alert(alert_id: int, db: AsyncSession = Depends(get_db)):
     await db.execute(
         update(AlertLog)
         .where(AlertLog.id == alert_id)
-        .values(status=AlertStatus.RESOLVED, resolved_at=datetime.now(timezone.utc))
+        .values(status=AlertStatus.RESOLVED, resolved_at=datetime.utcnow())
     )
     await db.commit()
     return {"message": "Alert resolved"}
-
-
-@router.get("/log/summary")
-async def alert_summary(db: AsyncSession = Depends(get_db)):
-    from sqlalchemy import func
-    result = await db.execute(
-        select(AlertLog.severity, AlertLog.status, func.count().label("count"))
-        .group_by(AlertLog.severity, AlertLog.status)
-    )
-    rows = result.all()
-    return [{"severity": r.severity.value, "status": r.status.value, "count": r.count} for r in rows]

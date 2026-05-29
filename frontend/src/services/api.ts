@@ -35,6 +35,11 @@ export const getTopSlowQueries = (limit = 10) => api.get(`/api/queries/top-slow?
 export const getQueryStats = () => api.get('/api/queries/stats')
 export const seedDemoQueries = () => api.post('/api/queries/seed-demo')
 
+// ─── Query Optimizer (M3 before/after comparison) ────────────
+export const getOptimizerScenarios = () => api.get('/api/queries/optimizer/scenarios')
+export const runOptimizerScenario = (id: number) =>
+  api.post(`/api/queries/optimizer/scenarios/${id}/run`, {}, { timeout: 60000 })
+
 // ─── Transactions ─────────────────────────────────────────────
 export const simulateConcurrency = (dbId: number, users = 100) =>
   api.post(`/api/transactions/simulate?db_id=${dbId}&num_users=${users}`)

@@ -5,7 +5,7 @@ and provides CAP theorem analysis data.
 """
 import asyncio
 import random
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
@@ -76,7 +76,7 @@ async def collect_replication_metrics():
                 lag_status=status,
                 bytes_pending=int(lag * 1024 * random.uniform(0.5, 2.0)),
                 is_streaming=lag < 30,
-                captured_at=datetime.now(timezone.utc),
+                captured_at=datetime.utcnow(),
             )
             db.add(record)
 
