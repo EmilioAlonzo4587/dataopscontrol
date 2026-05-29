@@ -84,6 +84,7 @@ async def evaluate_alerts():
     - Backup failed alerts: skipped if an alert with condition='backup_failed:<id>' exists.
     This ensures one email per incident, not one per cycle.
     """
+    print("[AlertEngine] evaluate_alerts() starting...")
     async with AsyncSessionLocal() as db:
         # ── Metric rules ──────────────────────────────────────────────────────
         rules_result = await db.execute(
@@ -136,8 +137,10 @@ async def evaluate_alerts():
                     ).limit(1)
                 )
                 if existing.scalar_one_or_none():
+                    print(f"[AlertEngine] SKIP (dedup): rule={rule.name!r} db_id={metric.db_id} — already OPEN")
                     continue
 
+                print(f"[AlertEngine] TRIGGER: rule={rule.name!r} db_id={metric.db_id} value={value:.2f} threshold={rule.operator}{rule.threshold}")
                 msg = (
                     f"<b>{conn_name}</b> — Rule <b>{rule.name}</b> triggered. "
                     f"<b>{rule.metric}</b> = {value:.2f} "
@@ -158,6 +161,8 @@ async def evaluate_alerts():
                         body=msg,
                     )
 
+        print(f"[AlertEngine] Metric evaluation complete.")
+
         # ── Failed backup alerts ───────────────────────────────────────────────
         # Requirement: Backup fallido → Correo + Alarma (dashboard log).
         # Uses condition='backup_failed:<backup_id>' as unique key per backup.
@@ -177,8 +182,10 @@ async def evaluate_alerts():
                 ).limit(1)
             )
             if dup.scalar_one_or_none():
+                print(f"[AlertEngine] SKIP (dedup): backup_failed:{bk.id} already logged")
                 continue
 
+            print(f"[AlertEngine] TRIGGER: backup FAILED id={bk.id} file={bk.file_name}")
             msg = (
                 f"<b>Backup FAILED</b>: {bk.file_name} "
                 f"(tipo: {bk.backup_type.value}, "

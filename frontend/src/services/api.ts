@@ -57,6 +57,8 @@ export const createSnapshot = (dbId: number, name: string) =>
 export const getSlaReport = () => api.get('/api/backup/sla-report')
 export const simulateDisaster = (dbId: number, snapshotId: number) =>
   api.post(`/api/backup/simulate-disaster?db_id=${dbId}&snapshot_backup_id=${snapshotId}`)
+export const simulateBackupFailure = (dbId: number) =>
+  api.post(`/api/backup/simulate-failure?db_id=${dbId}`)
 
 // ─── Replication ──────────────────────────────────────────────
 export const getReplicationStatus = () => api.get('/api/replication/status')
@@ -79,6 +81,9 @@ export const deleteAlertRule = (id: number) => api.delete(`/api/alerts/rules/${i
 export const getAlertLog = (severity?: string) =>
   api.get(`/api/alerts/log${severity ? `?severity=${severity}` : ''}`)
 export const resolveAlert = (id: number) => api.post(`/api/alerts/log/${id}/resolve`)
+export const resolveAllAlerts = () => api.post('/api/alerts/log/resolve-all')
+export const forceEvaluateAlerts = () => api.post('/api/alerts/evaluate')
+export const sendTestEmail = () => api.post('/api/alerts/test-email')
 export const getAlertSummary = () => api.get('/api/alerts/log/summary')
 
 // ─── Dashboard ────────────────────────────────────────────────

@@ -82,6 +82,43 @@ async def simulate_disaster(
     return result
 
 
+@router.post("/simulate-failure", response_model=BackupHistoryOut, status_code=201)
+async def simulate_backup_failure(
+    db_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Insert a FAILED backup record directly — simulates a real backup failure.
+    The alert engine detects it on the next cycle (or /api/alerts/evaluate) and sends email.
+    """
+    from datetime import datetime
+    result = await db.execute(select(Connection).where(Connection.id == db_id))
+    conn = result.scalar_one_or_none()
+    if not conn:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    record = BackupHistory(
+        db_id=db_id,
+        backup_type=BackupType.FULL,
+        status=BackupStatus.FAILED,
+        file_name=f"{conn.nombre}_FULL_{ts}_SIMULATED_FAILURE.bak",
+        file_size_mb=0.0,
+        duration_secs=0.0,
+        restore_point=ts,
+        sla_met=False,
+        rpo_minutes=15,
+        rto_minutes=45,
+        notes="Simulated failure triggered manually for alert testing",
+        created_at=datetime.utcnow(),
+    )
+    db.add(record)
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
 @router.get("/sla-report")
 async def sla_report(db: AsyncSession = Depends(get_db)):
     """SLA compliance report for BI dashboard."""

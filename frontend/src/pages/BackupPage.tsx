@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getConnections, getBackupHistory, runBackup, restoreBackup, createSnapshot, getSlaReport, simulateDisaster } from '../services/api'
-import { HardDrive, Play, RotateCcw, Camera, AlertTriangle, CheckCircle, Database, ChevronDown } from 'lucide-react'
+import { getConnections, getBackupHistory, runBackup, restoreBackup, createSnapshot, getSlaReport, simulateDisaster, simulateBackupFailure } from '../services/api'
+import { HardDrive, Play, RotateCcw, Camera, AlertTriangle, CheckCircle, Database, ChevronDown, Zap } from 'lucide-react'
 
 const TYPE_COLORS: any = { FULL: 'text-indigo-400', DIFF: 'text-amber-400', INC: 'text-emerald-400', SNAPSHOT: 'text-purple-400' }
 const STATUS_BADGE: any = { SUCCESS: 'badge-healthy', FAILED: 'badge-critical', RUNNING: 'badge-warning' }
@@ -52,6 +52,10 @@ export default function BackupPage() {
   const simMut = useMutation({
     mutationFn: (id: number) => simulateDisaster(selectedDbId!, id),
     onSuccess: (res) => setDisasterResult(res.data),
+  })
+  const failMut = useMutation({
+    mutationFn: () => simulateBackupFailure(selectedDbId!),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backup-history'] }),
   })
 
   const snapshot = history.find((b: any) => b.backup_type === 'SNAPSHOT')
@@ -170,14 +174,28 @@ export default function BackupPage() {
             <p className="text-xs text-slate-400 mb-3">
               Simula DROP TABLE y restaura desde el último snapshot de <span className="text-slate-200">{selectedConn.nombre}</span>. Mide RPO y RTO.
             </p>
-            <button
-              onClick={() => snapshot && simMut.mutate(snapshot.id)}
-              disabled={!snapshot || simMut.isPending}
-              className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 text-sm px-4 py-2 rounded-lg disabled:opacity-40"
-            >
-              <RotateCcw size={12} /> {simMut.isPending ? 'Restaurando…' : 'Simulate Disaster & Restore'}
-            </button>
-            {!snapshot && <p className="text-xs text-slate-500 mt-1">Crea un snapshot PRE_DEPLOY primero.</p>}
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => snapshot && simMut.mutate(snapshot.id)}
+                disabled={!snapshot || simMut.isPending}
+                className="flex items-center gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 text-sm px-4 py-2 rounded-lg disabled:opacity-40"
+              >
+                <RotateCcw size={12} /> {simMut.isPending ? 'Restaurando…' : 'Simulate Disaster & Restore'}
+              </button>
+              <button
+                onClick={() => failMut.mutate()}
+                disabled={!selectedDbId || failMut.isPending}
+                className="flex items-center gap-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/20 text-sm px-4 py-2 rounded-lg disabled:opacity-40"
+              >
+                <Zap size={12} /> {failMut.isPending ? 'Generando…' : 'Simular Backup Fallido'}
+              </button>
+            </div>
+            {!snapshot && <p className="text-xs text-slate-500 mt-1">Para el disaster recovery, crea un snapshot PRE_DEPLOY primero.</p>}
+            {failMut.isSuccess && (
+              <div className="mt-3 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs">
+                <p className="text-orange-400">Backup fallido registrado. El motor de alertas enviará email en el siguiente ciclo (máx. 60s). Revisa los logs del backend.</p>
+              </div>
+            )}
             {disasterResult && (
               <div className="mt-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-xs space-y-1">
                 <p className="flex items-center gap-1 text-emerald-400"><CheckCircle size={12} /> {disasterResult.message}</p>

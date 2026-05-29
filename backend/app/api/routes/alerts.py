@@ -84,3 +84,34 @@ async def resolve_alert(alert_id: int, db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
     return {"message": "Alert resolved"}
+
+
+@router.post("/log/resolve-all")
+async def resolve_all_open(db: AsyncSession = Depends(get_db)):
+    """Mark every OPEN alert as RESOLVED so the next engine cycle can re-fire."""
+    result = await db.execute(
+        update(AlertLog)
+        .where(AlertLog.status == AlertStatus.OPEN)
+        .values(status=AlertStatus.RESOLVED, resolved_at=datetime.utcnow())
+    )
+    await db.commit()
+    return {"message": f"Resolved {result.rowcount} open alert(s)"}
+
+
+@router.post("/evaluate")
+async def force_evaluate():
+    """Immediately run the alert engine (no need to wait 60 s). Useful for testing."""
+    from app.services.alerts.alert_engine import evaluate_alerts
+    await evaluate_alerts()
+    return {"message": "Alert evaluation complete — check backend logs"}
+
+
+@router.post("/test-email")
+async def test_email():
+    """Send a test email directly to verify SMTP credentials."""
+    from app.services.alerts.alert_engine import send_alert_email
+    await send_alert_email(
+        subject="Test — SMTP verificado",
+        body="<b>Conexión SMTP correcta.</b> Las alertas de DataOps funcionan.",
+    )
+    return {"message": "Test email attempted — check backend logs for SENT/ERROR"}

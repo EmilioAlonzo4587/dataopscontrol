@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, getAlertLog, resolveAlert, getAlertSummary } from '../services/api'
-import { Bell, Plus, Trash2, CheckCircle, Pencil, X } from 'lucide-react'
+import { getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, getAlertLog, resolveAlert, resolveAllAlerts, forceEvaluateAlerts, sendTestEmail, getAlertSummary } from '../services/api'
+import { Bell, Plus, Trash2, CheckCircle, Pencil, X, RefreshCw, Mail, ShieldOff } from 'lucide-react'
 
 const SEV_BADGE: any = { Warning: 'badge-warning', Critical: 'badge-critical', Info: 'text-blue-400' }
 const STATUS_BADGE: any = { OPEN: 'badge-critical', RESOLVED: 'badge-healthy', IGNORED: 'text-slate-400' }
@@ -28,6 +28,9 @@ export default function AlertsPage() {
   })
   const deleteMut = useMutation({ mutationFn: deleteAlertRule, onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-rules'] }) })
   const resolveMut = useMutation({ mutationFn: resolveAlert, onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-log'] }) })
+  const resolveAllMut = useMutation({ mutationFn: resolveAllAlerts, onSuccess: () => qc.invalidateQueries({ queryKey: ['alert-log'] }) })
+  const evaluateMut = useMutation({ mutationFn: forceEvaluateAlerts, onSuccess: () => { qc.invalidateQueries({ queryKey: ['alert-log'] }); qc.invalidateQueries({ queryKey: ['alert-summary'] }) } })
+  const testEmailMut = useMutation({ mutationFn: sendTestEmail })
 
   const criticalOpen = (logs as any[]).filter((l: any) => l.severity === 'Critical' && l.status === 'OPEN').length
   const totalOpen = (logs as any[]).filter((l: any) => l.status === 'OPEN').length
@@ -67,12 +70,36 @@ export default function AlertsPage() {
           <h1 className="text-2xl font-bold text-white">Alert Engine</h1>
           <p className="text-slate-400 text-sm">Module 9 — Configurable rules · Email notifications · ALERT_LOG with full audit trail</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {criticalOpen > 0 && (
             <span className="flex items-center gap-1 text-xs bg-red-500/20 text-red-400 px-3 py-1.5 rounded-full animate-pulse">
               <Bell size={12} /> {criticalOpen} Critical Open
             </span>
           )}
+          <button
+            onClick={() => testEmailMut.mutate()}
+            disabled={testEmailMut.isPending}
+            title="Enviar email de prueba SMTP"
+            className="flex items-center gap-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 hover:bg-sky-500/20 text-sm px-3 py-2 rounded-lg disabled:opacity-40"
+          >
+            <Mail size={13} /> {testEmailMut.isPending ? '…' : 'Test Email'}
+          </button>
+          <button
+            onClick={() => resolveAllMut.mutate()}
+            disabled={resolveAllMut.isPending || totalOpen === 0}
+            title="Resolver todas las alertas OPEN (permite re-disparar)"
+            className="flex items-center gap-2 bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 text-sm px-3 py-2 rounded-lg disabled:opacity-40"
+          >
+            <ShieldOff size={13} /> Resolver todas ({totalOpen})
+          </button>
+          <button
+            onClick={() => evaluateMut.mutate()}
+            disabled={evaluateMut.isPending}
+            title="Forzar evaluación de alertas ahora"
+            className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 text-sm px-3 py-2 rounded-lg disabled:opacity-40"
+          >
+            <RefreshCw size={13} className={evaluateMut.isPending ? 'animate-spin' : ''} /> Evaluar ahora
+          </button>
           <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
             <Plus size={14} /> New Rule
           </button>
