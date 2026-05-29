@@ -23,7 +23,9 @@
       "Bash(docker-compose -f \"c:/Users/user/Desktop/dataops-control/docker-compose.yml\" up -d --build frontend)",
       "Bash(curl -s http://localhost:8000/api/queries/optimizer/scenarios)",
       "Bash(curl -s -X POST http://localhost:8000/api/queries/optimizer/scenarios/1/run)",
-      "Bash(curl -s http://localhost:8000/api/queries/stats)"
+      "Bash(curl -s http://localhost:8000/api/queries/stats)",
+      "Bash(curl -s http://localhost:8000/api/dashboard/availability)",
+      "Bash(curl -s http://localhost:8000/api/connections/)"
     ]
   }
 }
