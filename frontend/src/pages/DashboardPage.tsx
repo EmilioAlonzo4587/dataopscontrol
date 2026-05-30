@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { getDashboardOverview, getAvailabilityByDb, getTopSlowQueries, getAlertSummary, getSlaReport } from '../services/api'
-import { Activity, Database, AlertTriangle, CheckCircle, Clock, TrendingUp } from 'lucide-react'
+import { Activity, Database, AlertTriangle, CheckCircle, Clock, TrendingUp, Zap } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 
 const COLORS = { Healthy: '#10b981', Warning: '#f59e0b', Critical: '#ef4444' }
 
-function KpiCard({ label, value, sub, color = 'indigo', icon: Icon }: any) {
+function KpiCard({ label, value, sub, color = 'cyan', icon: Icon }: any) {
   const colorMap: any = {
-    indigo:  'bg-indigo-500/10 text-indigo-400',
+    cyan:  'bg-cyan-500/10 text-cyan-400',
     green:   'bg-emerald-500/10 text-emerald-400',
     yellow:  'bg-amber-500/10 text-amber-400',
     red:     'bg-red-500/10 text-red-400',
@@ -45,7 +45,7 @@ export default function DashboardPage() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={Database}       label="Total Connections"   value={overview?.total_connections ?? '—'} color="indigo" />
+        <KpiCard icon={Database}       label="Total Connections"   value={overview?.total_connections ?? '—'} color="cyan" />
         <KpiCard icon={Activity}       label="Availability (24h)"  value={`${overview?.availability_24h_pct ?? 0}%`} sub="Target: 99.9%" color="green" />
         <KpiCard icon={AlertTriangle}  label="Critical Alerts Open" value={overview?.critical_alerts_open ?? 0} color="red" />
         <KpiCard icon={CheckCircle}    label="Backup SLA"           value={`${overview?.backup_sla_pct ?? 0}%`} color={overview?.backup_sla_pct >= 90 ? 'green' : 'yellow'} />
@@ -59,7 +59,7 @@ export default function DashboardPage() {
             <PieChart>
               <Pie data={healthPie} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, value }) => `${name}: ${value}`}>
                 {healthPie.map((entry: any) => (
-                  <Cell key={entry.name} fill={COLORS[entry.name as keyof typeof COLORS] || '#6366f1'} />
+                  <Cell key={entry.name} fill={COLORS[entry.name as keyof typeof COLORS] || '#06b6d4'} />
                 ))}
               </Pie>
               <Tooltip />
@@ -74,8 +74,8 @@ export default function DashboardPage() {
             <BarChart data={availability || []}>
               <XAxis dataKey="nombre" tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8 }} />
-              <Bar dataKey="availability_pct" fill="#6366f1" radius={[4, 4, 0, 0]} name="Availability %" />
+              <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8 }} />
+              <Bar dataKey="availability_pct" fill="#06b6d4" radius={[4, 4, 0, 0]} name="Availability %" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -93,7 +93,11 @@ export default function DashboardPage() {
                 <span className="text-slate-500 w-4">{i + 1}</span>
                 <div className="flex-1 truncate">
                   <p className="text-slate-300 truncate">{q.query_text.slice(0, 60)}…</p>
-                  {q.optimized_query && <p className="text-emerald-400 text-[10px] truncate">💡 {q.optimized_query}</p>}
+                  {q.optimized_query && (
+                    <p className="text-emerald-400 text-[10px] truncate flex items-center gap-1">
+                      <Zap size={9} className="shrink-0" />{q.optimized_query}
+                    </p>
+                  )}
                 </div>
                 <span className={`font-mono font-bold ${q.duration_ms > 2000 ? 'text-red-400' : q.duration_ms > 500 ? 'text-amber-400' : 'text-emerald-400'}`}>
                   {q.duration_ms.toFixed(0)}ms

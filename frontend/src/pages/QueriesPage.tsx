@@ -60,7 +60,7 @@ function OptimizationResult({ result }: { result: any }) {
       {/* Optimization applied */}
       <div className="bg-slate-700/30 rounded-lg p-2">
         <p className="text-xs text-slate-400 mb-1">Optimización aplicada:</p>
-        <code className="text-xs text-indigo-300 font-mono">{result.optimization_applied}</code>
+        <code className="text-xs text-cyan-300 font-mono">{result.optimization_applied}</code>
       </div>
 
       {/* EXPLAIN ANALYZE plans toggle */}
@@ -117,7 +117,7 @@ export default function QueriesPage() {
           <p className="text-slate-400 text-sm">Module 3 — Fast &lt;100ms · Medium 100–500ms · Slow 500–2000ms · Critical &gt;2000ms</p>
         </div>
         <button onClick={() => seedMut.mutate()} disabled={seedMut.isPending}
-          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+          className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-60 text-white text-sm px-4 py-2 rounded-lg flex items-center gap-2">
           <Zap size={14} className={seedMut.isPending ? 'animate-spin' : ''} />
           {seedMut.isPending ? 'Seeding…' : 'Seed Demo Data'}
         </button>
@@ -147,13 +147,13 @@ export default function QueriesPage() {
                 <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <Tooltip
-                  contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12 }}
+                  contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }}
                   formatter={(v: any) => [`${v} queries`, 'Count']}
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]} isAnimationActive={true}>
                   <LabelList dataKey="count" position="top" style={{ fontSize: 10, fill: '#94a3b8' }} />
                   {(stats as any[]).map((entry: any) => (
-                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#6366f1'} />
+                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -168,13 +168,13 @@ export default function QueriesPage() {
                 <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} unit="ms" />
                 <Tooltip
-                  contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12 }}
+                  contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }}
                   formatter={(v: any) => [`${Number(v).toFixed(1)} ms`, 'Avg Duration']}
                 />
                 <Bar dataKey="avg_ms" radius={[4, 4, 0, 0]} isAnimationActive={true}>
                   <LabelList dataKey="avg_ms" position="top" formatter={(v: any) => `${Number(v).toFixed(0)}ms`} style={{ fontSize: 10, fill: '#94a3b8' }} />
                   {(stats as any[]).map((entry: any) => (
-                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#6366f1'} />
+                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />
                   ))}
                 </Bar>
               </BarChart>

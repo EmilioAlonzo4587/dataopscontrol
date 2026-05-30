@@ -109,9 +109,10 @@ async def force_evaluate():
 @router.post("/test-email")
 async def test_email():
     """Send a test email directly to verify SMTP credentials."""
-    from app.services.alerts.alert_engine import send_alert_email
+    from app.services.alerts.alert_engine import send_alert_email, build_test_email_html
+    html = build_test_email_html()
     await send_alert_email(
-        subject="Test — SMTP verificado",
-        body="<b>Conexión SMTP correcta.</b> Las alertas de DataOps funcionan.",
+        subject="Test — SMTP verificado · DataOps Control",
+        body=html,
     )
     return {"message": "Test email attempted — check backend logs for SENT/ERROR"}

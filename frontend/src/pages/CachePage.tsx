@@ -76,7 +76,7 @@ export default function CachePage() {
           },
           { label: 'Cache Hits',   value: stats?.hits   ?? 0, color: 'text-emerald-400' },
           { label: 'Cache Misses', value: stats?.misses ?? 0, color: 'text-red-400' },
-          { label: 'Total Keys',   value: stats?.total_keys ?? 0, color: 'text-indigo-400' },
+          { label: 'Total Keys',   value: stats?.total_keys ?? 0, color: 'text-cyan-400' },
         ].map(({ label, value, color }) => (
           <div key={label} className="card text-center">
             <p className="text-xs text-slate-400">{label}</p>
@@ -99,7 +99,7 @@ export default function CachePage() {
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#94a3b8' }} />
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} unit="ms" />
               <Tooltip
-                contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8 }}
+                contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8 }}
                 formatter={(v: any) => [`${Number(v).toFixed(1)}ms`, 'Tiempo']}
               />
               <Bar dataKey="ms" radius={[6, 6, 0, 0]}>
@@ -120,7 +120,7 @@ export default function CachePage() {
           <div>
             <h2 className="text-sm font-semibold text-slate-300">Cache-Aside Demo</h2>
             <p className="text-xs text-slate-400 mt-1">
-              Primera llamada: DB query real con <code className="text-indigo-300">pg_sleep(0.35)</code> (~400ms).
+              Primera llamada: DB query real con <code className="text-cyan-300">pg_sleep(0.35)</code> (~400ms).
               Llamadas siguientes: Redis HIT (~40ms). TTL = 60s.
             </p>
           </div>
@@ -128,7 +128,7 @@ export default function CachePage() {
           <button
             onClick={() => demoMut.mutate()}
             disabled={demoMut.isPending}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg transition-colors"
           >
             <Zap size={14} /> {demoMut.isPending ? 'Consultando…' : 'Run Demo Query'}
           </button>
@@ -192,10 +192,10 @@ export default function CachePage() {
       <div className="card">
         <h2 className="text-sm font-semibold text-slate-300 mb-3">Estrategia de Invalidación</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 space-y-2">
-            <p className="text-xs font-semibold text-indigo-300">TTL — Expiración automática</p>
+          <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+            <p className="text-xs font-semibold text-cyan-300">TTL — Expiración automática</p>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Cada entrada se almacena con <code className="text-indigo-300">SETEX key 60 value</code>.
+              Cada entrada se almacena con <code className="text-cyan-300">SETEX key 60 value</code>.
               Redis expira la llave automáticamente a los 60 segundos. Ideal para datos que cambian
               con baja frecuencia (métricas, estadísticas de queries).
             </p>

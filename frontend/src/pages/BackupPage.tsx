@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getConnections, getBackupHistory, runBackup, restoreBackup, createSnapshot, getSlaReport, simulateDisaster, simulateBackupFailure } from '../services/api'
-import { HardDrive, Play, RotateCcw, Camera, AlertTriangle, CheckCircle, Database, ChevronDown, Zap } from 'lucide-react'
+import { HardDrive, Play, RotateCcw, Camera, AlertTriangle, CheckCircle, XCircle, Database, ChevronDown, Zap } from 'lucide-react'
 
-const TYPE_COLORS: any = { FULL: 'text-indigo-400', DIFF: 'text-amber-400', INC: 'text-emerald-400', SNAPSHOT: 'text-purple-400' }
+const TYPE_COLORS: any = { FULL: 'text-cyan-400', DIFF: 'text-amber-400', INC: 'text-emerald-400', SNAPSHOT: 'text-purple-400' }
 const STATUS_BADGE: any = { SUCCESS: 'badge-healthy', FAILED: 'badge-critical', RUNNING: 'badge-warning' }
 const ENGINE_BADGE: any = {
   PostgreSQL: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -15,6 +15,7 @@ export default function BackupPage() {
   const qc = useQueryClient()
   const [selectedDbId, setSelectedDbId] = useState<number | null>(null)
   const [disasterResult, setDisasterResult] = useState<any>(null)
+  const [showFailMsg, setShowFailMsg] = useState(false)
 
   const { data: connections = [] } = useQuery({
     queryKey: ['connections'],
@@ -41,13 +42,18 @@ export default function BackupPage() {
     queryFn: () => getSlaReport().then(r => r.data),
   })
 
+  const invalidateBackup = () => {
+    qc.invalidateQueries({ queryKey: ['backup-history'] })
+    qc.invalidateQueries({ queryKey: ['sla'] })
+  }
+
   const runMut = useMutation({
     mutationFn: ({ type, parent }: any) => runBackup(selectedDbId!, type, parent),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['backup-history'] }),
+    onSuccess: invalidateBackup,
   })
   const snapMut = useMutation({
     mutationFn: (name: string) => createSnapshot(selectedDbId!, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['backup-history'] }),
+    onSuccess: invalidateBackup,
   })
   const simMut = useMutation({
     mutationFn: (id: number) => simulateDisaster(selectedDbId!, id),
@@ -55,7 +61,11 @@ export default function BackupPage() {
   })
   const failMut = useMutation({
     mutationFn: () => simulateBackupFailure(selectedDbId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['backup-history'] }),
+    onSuccess: () => {
+      invalidateBackup()
+      setShowFailMsg(true)
+      setTimeout(() => setShowFailMsg(false), 5000)
+    },
   })
 
   const snapshot = history.find((b: any) => b.backup_type === 'SNAPSHOT')
@@ -72,7 +82,7 @@ export default function BackupPage() {
       {/* DB Selector */}
       <div className="card">
         <div className="flex items-center gap-3 mb-2">
-          <Database size={16} className="text-indigo-400" />
+          <Database size={16} className="text-cyan-400" />
           <h2 className="text-sm font-semibold text-slate-300">Base de datos objetivo</h2>
         </div>
         <p className="text-xs text-slate-500 mb-3">
@@ -85,7 +95,7 @@ export default function BackupPage() {
               onClick={() => { setSelectedDbId(c.id); setDisasterResult(null) }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all
                 ${selectedDbId === c.id
-                  ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 ring-1 ring-indigo-500/40'
+                  ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-300 ring-1 ring-cyan-500/40'
                   : 'bg-slate-700/40 border-slate-600/40 text-slate-400 hover:border-slate-500'}`}
             >
               <span className={`px-1.5 py-0.5 rounded text-[10px] border ${ENGINE_BADGE[c.motor] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>
@@ -132,7 +142,7 @@ export default function BackupPage() {
               <button
                 onClick={() => runMut.mutate({ type: 'FULL' })}
                 disabled={runMut.isPending}
-                className="flex items-center gap-2 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600/30 disabled:opacity-50 text-sm px-3 py-2 rounded-lg"
+                className="flex items-center gap-2 bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-600/30 disabled:opacity-50 text-sm px-3 py-2 rounded-lg"
               >
                 <Play size={12} /> FULL Backup
               </button>
@@ -162,7 +172,7 @@ export default function BackupPage() {
               ))}
             </div>
             {(runMut.isPending || snapMut.isPending) && (
-              <p className="text-xs text-indigo-400 mt-2 animate-pulse">Creando backup en {selectedConn.nombre}…</p>
+              <p className="text-xs text-cyan-400 mt-2 animate-pulse">Creando backup en {selectedConn.nombre}…</p>
             )}
           </div>
 
@@ -191,7 +201,7 @@ export default function BackupPage() {
               </button>
             </div>
             {!snapshot && <p className="text-xs text-slate-500 mt-1">Para el disaster recovery, crea un snapshot PRE_DEPLOY primero.</p>}
-            {failMut.isSuccess && (
+            {showFailMsg && (
               <div className="mt-3 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs">
                 <p className="text-orange-400">Backup fallido registrado. El motor de alertas enviará email en el siguiente ciclo (máx. 60s). Revisa los logs del backend.</p>
               </div>
@@ -200,7 +210,13 @@ export default function BackupPage() {
               <div className="mt-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-xs space-y-1">
                 <p className="flex items-center gap-1 text-emerald-400"><CheckCircle size={12} /> {disasterResult.message}</p>
                 <p className="text-slate-400">Disaster: {disasterResult.disaster_simulated}</p>
-                <p className="text-slate-400">Restore time: {disasterResult.elapsed_seconds}s · RTO met: {disasterResult.rto_met ? '✅ Yes' : '❌ No'}</p>
+                <p className="flex items-center gap-1 text-slate-400">
+                  Restore time: {disasterResult.elapsed_seconds}s · RTO met:{' '}
+                  {disasterResult.rto_met
+                    ? <span className="flex items-center gap-1 text-emerald-400"><CheckCircle size={11} /> Yes</span>
+                    : <span className="flex items-center gap-1 text-red-400"><XCircle size={11} /> No</span>
+                  }
+                </p>
               </div>
             )}
           </div>
@@ -230,7 +246,9 @@ export default function BackupPage() {
                       <td className="py-2 pr-3 font-mono max-w-xs truncate">{b.file_name}</td>
                       <td className="py-2 pr-3">{b.file_size_mb.toFixed(3)} MB</td>
                       <td className="py-2 pr-3">{b.duration_secs.toFixed(2)}s</td>
-                      <td className="py-2 pr-3 text-emerald-400">{b.s3_url ? '✅' : '—'}</td>
+                      <td className="py-2 pr-3">
+                        {b.s3_url ? <CheckCircle size={12} className="text-emerald-400" /> : <span className="text-slate-600">—</span>}
+                      </td>
                       <td className="py-2 pr-3">{b.sla_met ? <span className="badge-healthy">Met</span> : <span className="badge-critical">Missed</span>}</td>
                       <td className="py-2"><span className={STATUS_BADGE[b.status]}>{b.status}</span></td>
                     </tr>

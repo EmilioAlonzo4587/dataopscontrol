@@ -3,8 +3,12 @@ export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Courier New', 'monospace'],
+      },
       colors: {
-        primary: { DEFAULT: '#6366f1', dark: '#4f46e5' },
+        primary: { DEFAULT: '#06b6d4', dark: '#0891b2' },
         healthy:  '#10b981',
         warning:  '#f59e0b',
         critical: '#ef4444',

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { getReplicationStatus, getCurrentLag, getCapAnalysis, simulateReplicationScenario } from '../services/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
-import { RefreshCw, Play, CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp, Activity } from 'lucide-react'
+import { RefreshCw, Play, CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp, Activity, Lock, GitBranch } from 'lucide-react'
 
 const LAG_CONFIG = [
   { id: 'normal', label: 'Carga Normal',  writes: 'Sin escrituras extra', target: '≤ 2s',  color: 'emerald', icon: CheckCircle },
@@ -74,10 +74,10 @@ export default function ReplicationPage() {
         <div className="grid grid-cols-3 gap-4">
           <LagBadge lag={currentLag.lag_seconds} status={currentLag.lag_status} />
           <div className="col-span-2 card flex items-center gap-4">
-            <Activity size={18} className="text-indigo-400 shrink-0" />
+            <Activity size={18} className="text-cyan-400 shrink-0" />
             <div>
               <p className="text-xs text-slate-400 mb-0.5">Fuente de medición</p>
-              <p className="text-sm text-slate-200 font-mono">replica → <code className="text-indigo-300">pg_last_xact_replay_timestamp()</code></p>
+              <p className="text-sm text-slate-200 font-mono">replica → <code className="text-cyan-300">pg_last_xact_replay_timestamp()</code></p>
               <p className="text-xs text-slate-500 mt-1">
                 Primario: <span className="text-slate-300">postgres_primary:5432</span>
                 {' · '}Réplica: <span className="text-slate-300">postgres_replica:5432</span>
@@ -97,12 +97,12 @@ export default function ReplicationPage() {
           <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <XAxis dataKey="time" tick={{ fontSize: 9, fill: '#94a3b8' }} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} unit="s" />
-            <Tooltip contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8, fontSize: 12 }}
+            <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }}
               formatter={(v: any) => [`${Number(v).toFixed(2)}s`, 'Lag']} />
             <ReferenceLine y={2}  stroke="#10b981" strokeDasharray="4 2" label={{ value: 'Normal 2s', fill: '#10b981', fontSize: 10 }} />
             <ReferenceLine y={5}  stroke="#f59e0b" strokeDasharray="4 2" label={{ value: 'Medio 5s',  fill: '#f59e0b', fontSize: 10 }} />
             <ReferenceLine y={20} stroke="#ef4444" strokeDasharray="4 2" label={{ value: 'Alto 20s',  fill: '#ef4444', fontSize: 10 }} />
-            <Line type="monotone" dataKey="lag" stroke="#6366f1" strokeWidth={2} dot={false} name="Lag (s)" />
+            <Line type="monotone" dataKey="lag" stroke="#06b6d4" strokeWidth={2} dot={false} name="Lag (s)" />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -189,20 +189,22 @@ export default function ReplicationPage() {
           {showCap && (
             <div className="mt-4 space-y-4">
               {/* Summary */}
-              <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4">
+              <div className="bg-cyan-500/10 border border-cyan-500/20 rounded-xl p-4">
                 <p className="text-xs text-slate-300 leading-relaxed">{cap.summary}</p>
               </div>
 
               {/* C, A, P cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {[
-                  { key: 'consistency',       title: 'C — Consistencia',             icon: '🔒', data: cap.consistency },
-                  { key: 'availability',      title: 'A — Disponibilidad',           icon: '🟢', data: cap.availability },
-                  { key: 'partition_tolerance', title: 'P — Tolerancia a Particiones', icon: '🔀', data: cap.partition_tolerance },
-                ].map(({ title, icon, data }) => (
+                  { key: 'consistency',         title: 'C — Consistencia',             Icon: Lock,       data: cap.consistency },
+                  { key: 'availability',        title: 'A — Disponibilidad',           Icon: CheckCircle, data: cap.availability },
+                  { key: 'partition_tolerance', title: 'P — Tolerancia a Particiones', Icon: GitBranch,  data: cap.partition_tolerance },
+                ].map(({ title, Icon, data }) => (
                   <div key={title} className="bg-slate-700/40 border border-slate-600/40 rounded-xl p-4 space-y-2">
-                    <p className="text-sm font-semibold text-slate-200">{icon} {title}</p>
-                    <p className="text-xs text-indigo-300 font-medium">{data?.level}</p>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-200">
+                      <Icon size={14} className="shrink-0" />{title}
+                    </p>
+                    <p className="text-xs text-cyan-300 font-medium">{data?.level}</p>
                     <p className="text-xs text-slate-400 leading-relaxed">{data?.description}</p>
                   </div>
                 ))}
@@ -238,7 +240,7 @@ export default function ReplicationPage() {
                 <div className="space-y-1.5">
                   {(cap.design_decisions || []).map((d: string, i: number) => (
                     <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
-                      <span className="text-indigo-400 mt-0.5 shrink-0">▸</span>
+                      <span className="text-cyan-400 mt-0.5 shrink-0">▸</span>
                       <span className="leading-relaxed">{d}</span>
                     </div>
                   ))}

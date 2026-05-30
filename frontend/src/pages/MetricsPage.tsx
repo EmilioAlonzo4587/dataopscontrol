@@ -109,7 +109,7 @@ export default function MetricsPage() {
                 </p>
                 <button
                   onClick={() => setHistoryDbId(historyDbId === m.db_id ? null : m.db_id)}
-                  className="text-xs text-indigo-400 hover:text-indigo-300"
+                  className="text-xs text-cyan-400 hover:text-cyan-300"
                 >
                   {historyDbId === m.db_id ? 'Ocultar historial' : 'Ver historial'}
                 </button>
@@ -126,9 +126,9 @@ export default function MetricsPage() {
                         tickFormatter={v => new Date(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         tick={{ fontSize: 9, fill: '#64748b' }} interval="preserveStartEnd" />
                       <YAxis tick={{ fontSize: 9, fill: '#64748b' }} domain={[0, 100]} width={28} unit="%" />
-                      <Tooltip contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 6, fontSize: 11 }}
+                      <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 6, fontSize: 11 }}
                         labelFormatter={v => new Date(v).toLocaleTimeString()} />
-                      <Line type="monotone" dataKey="cpu" stroke="#6366f1" strokeWidth={1.5} dot={false} name="CPU %" />
+                      <Line type="monotone" dataKey="cpu" stroke="#06b6d4" strokeWidth={1.5} dot={false} name="CPU %" />
                       <Line type="monotone" dataKey="memory" stroke="#10b981" strokeWidth={1.5} dot={false} name="Memory %" />
                     </LineChart>
                   </ResponsiveContainer>

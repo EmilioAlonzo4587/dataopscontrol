@@ -3,19 +3,26 @@
 @tailwind utilities;
 
 body {
-  background-color: #0f172a;
+  background-color: #09090b;
   color: #e2e8f0;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-feature-settings: 'ss01', 'ss02';
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1e293b; }
-::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #18181b; }
+::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
 .card {
-  @apply bg-slate-800 rounded-xl border border-slate-700 p-4;
+  @apply bg-zinc-900/90 rounded-xl border border-zinc-800 p-4 shadow-sm;
 }
 
-.badge-healthy  { @apply bg-emerald-500/20 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium; }
-.badge-warning  { @apply bg-amber-500/20 text-amber-400 text-xs px-2 py-0.5 rounded-full font-medium; }
-.badge-critical { @apply bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded-full font-medium; }
+.badge-healthy  { @apply bg-emerald-500/15 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium tracking-wide; }
+.badge-warning  { @apply bg-amber-500/15 text-amber-400 text-xs px-2 py-0.5 rounded-full font-medium tracking-wide; }
+.badge-critical { @apply bg-red-500/15 text-red-400 text-xs px-2 py-0.5 rounded-full font-medium tracking-wide; }

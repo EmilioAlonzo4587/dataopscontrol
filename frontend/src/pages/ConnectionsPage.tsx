@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getConnections, createConnection, deleteConnection, testConnection } from '../services/api'
-import { Plus, Trash2, Play, Database, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Plus, Trash2, Play, Database, CheckCircle, XCircle, Clock, Lock } from 'lucide-react'
 
 const STATUS_COLORS: any = {
   ACTIVE:   'badge-healthy',
@@ -47,7 +47,7 @@ export default function ConnectionsPage() {
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
         >
           <Plus size={16} /> New Connection
         </button>
@@ -71,7 +71,7 @@ export default function ConnectionsPage() {
                   type={type}
                   value={(form as any)[key]}
                   onChange={e => setForm(p => ({ ...p, [key]: type === 'number' ? +e.target.value : e.target.value }))}
-                  className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                 />
               </div>
             ))}
@@ -92,13 +92,16 @@ export default function ConnectionsPage() {
             <button
               onClick={() => createMut.mutate(form)}
               disabled={createMut.isPending}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg"
+              className="bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg"
             >
               {createMut.isPending ? 'Saving…' : 'Save & Test'}
             </button>
             <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
           </div>
-          <p className="text-xs text-slate-500 mt-2">🔒 Credentials are encrypted before storage — never stored as plain text</p>
+          <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-2">
+            <Lock size={10} className="shrink-0" />
+            Credentials are encrypted before storage — never stored as plain text
+          </p>
         </div>
       )}
 
@@ -107,7 +110,7 @@ export default function ConnectionsPage() {
           <div key={conn.id} className="card">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
-                <Database className="text-indigo-400" size={18} />
+                <Database className="text-cyan-400" size={18} />
                 <div>
                   <h3 className="font-semibold text-white text-sm">{conn.nombre}</h3>
                   <p className="text-xs text-slate-400">{conn.motor} · {conn.host}:{conn.port}/{conn.database_name}</p>

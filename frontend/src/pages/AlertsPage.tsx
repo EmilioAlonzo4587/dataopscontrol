@@ -100,7 +100,7 @@ export default function AlertsPage() {
           >
             <RefreshCw size={13} className={evaluateMut.isPending ? 'animate-spin' : ''} /> Evaluar ahora
           </button>
-          <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
+          <button onClick={openCreate} className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg">
             <Plus size={14} /> New Rule
           </button>
         </div>
@@ -179,7 +179,7 @@ export default function AlertsPage() {
             </div>
           </div>
           <div className="flex gap-2 mt-4">
-            <button onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2 rounded-lg">
+            <button onClick={handleSubmit} className="bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg">
               {isPending ? 'Saving…' : editingId !== null ? 'Save Changes' : 'Create Rule'}
             </button>
             <button onClick={closeForm} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
@@ -201,7 +201,7 @@ export default function AlertsPage() {
                 <div className="flex items-center gap-2">
                   <span className={SEV_BADGE[r.severity]}>{r.severity}</span>
                   <span className={r.enabled ? 'badge-healthy' : 'badge-warning'}>{r.enabled ? 'ON' : 'OFF'}</span>
-                  <button onClick={() => openEdit(r)} className="text-indigo-400 hover:text-indigo-300"><Pencil size={12} /></button>
+                  <button onClick={() => openEdit(r)} className="text-cyan-400 hover:text-cyan-300"><Pencil size={12} /></button>
                   <button onClick={() => deleteMut.mutate(r.id)} className="text-red-400 hover:text-red-300"><Trash2 size={12} /></button>
                 </div>
               </div>

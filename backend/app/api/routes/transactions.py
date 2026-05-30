@@ -17,9 +17,10 @@ from app.core.config import settings
 
 router = APIRouter()
 
-# 15 concurrent PG connections max; each session's lock waits at most 400ms
+# 15 concurrent PG connections max
 _POOL_SIZE = 15
-_LOCK_TIMEOUT_MS = 400
+_DEADLOCK_TIMEOUT_MS = 300   # PG checks for deadlock cycles after this wait
+_LOCK_TIMEOUT_MS = 2500      # Must be > _DEADLOCK_TIMEOUT_MS so detector fires first
 
 
 def _raw_dsn() -> str:
@@ -76,14 +77,18 @@ async def _run_session(pool, session_id: str, operation: str, db_id: int) -> dic
                 # session B locks row 7 then wants row 3 → PostgreSQL detects the cycle.
                 row1, row2 = random.sample(range(1, 11), 2)
                 async with conn.transaction():
+                    # deadlock_timeout < lock_timeout so PG detects cycles before timing out
+                    await conn.execute(
+                        f"SET LOCAL deadlock_timeout = '{_DEADLOCK_TIMEOUT_MS}ms'"
+                    )
                     await conn.execute(
                         f"SET LOCAL lock_timeout = '{_LOCK_TIMEOUT_MS}ms'"
                     )
                     await conn.execute(
                         "SELECT id FROM concurrency_test WHERE id = $1 FOR UPDATE", row1
                     )
-                    # Brief hold so other sessions can grab their first row
-                    await asyncio.sleep(random.uniform(0, 0.04))
+                    # Hold first lock long enough for other sessions to grab theirs → deadlock cycle forms
+                    await asyncio.sleep(random.uniform(0.05, 0.15))
                     await conn.execute(
                         "SELECT id FROM concurrency_test WHERE id = $1 FOR UPDATE", row2
                     )

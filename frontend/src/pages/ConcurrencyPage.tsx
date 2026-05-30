@@ -4,7 +4,7 @@ import { getConnections, simulateConcurrency, getTxStats, getRecentDeadlocks } f
 import { GitMerge, Play, AlertTriangle, Database, CheckCircle } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
-const LOCK_COLORS: any = { SHARED: '#6366f1', EXCLUSIVE: '#f59e0b', DEADLOCK: '#ef4444', TIMEOUT: '#f97316' }
+const LOCK_COLORS: any = { SHARED: '#06b6d4', EXCLUSIVE: '#f59e0b', DEADLOCK: '#ef4444', TIMEOUT: '#f97316' }
 const ENGINE_BADGE: any = {
   PostgreSQL:    'bg-blue-500/10 text-blue-400 border-blue-500/20',
   'SQL Server':  'bg-red-500/10 text-red-400 border-red-500/20',
@@ -56,11 +56,11 @@ export default function ConcurrencyPage() {
       {/* DB Selector */}
       <div className="card">
         <div className="flex items-center gap-3 mb-2">
-          <Database size={16} className="text-indigo-400" />
+          <Database size={16} className="text-cyan-400" />
           <h2 className="text-sm font-semibold text-slate-300">Base de datos objetivo</h2>
         </div>
         <p className="text-xs text-slate-500 mb-3">
-          PostgreSQL ejecuta transacciones reales con <code className="text-indigo-300">SELECT...FOR UPDATE</code> y detecta deadlocks genuinos.
+          PostgreSQL ejecuta transacciones reales con <code className="text-cyan-300">SELECT...FOR UPDATE</code> y detecta deadlocks genuinos.
           SQL Server y Oracle usan el servicio de métricas real pero la simulación de concurrencia corre en el primario PostgreSQL.
         </p>
         <div className="flex flex-wrap gap-2">
@@ -70,7 +70,7 @@ export default function ConcurrencyPage() {
               onClick={() => setSelectedDbId(c.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all
                 ${selectedDbId === c.id
-                  ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 ring-1 ring-indigo-500/40'
+                  ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-300 ring-1 ring-cyan-500/40'
                   : 'bg-slate-700/40 border-slate-600/40 text-slate-400 hover:border-slate-500'}`}
             >
               <span className={`px-1.5 py-0.5 rounded text-[10px] border ${ENGINE_BADGE[c.motor] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}`}>
@@ -108,14 +108,14 @@ export default function ConcurrencyPage() {
           <button
             onClick={() => simMut.mutate()}
             disabled={simMut.isPending || selectedDbId === null}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg"
+            className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg"
           >
             <Play size={14} /> {simMut.isPending ? 'Simulando…' : 'Run Simulation'}
           </button>
         </div>
 
         {simMut.isPending && (
-          <div className="mt-3 text-xs text-indigo-400 animate-pulse">
+          <div className="mt-3 text-xs text-cyan-400 animate-pulse">
             Ejecutando {users} transacciones reales con bloqueos de filas (FOR UPDATE)…
           </div>
         )}
@@ -124,7 +124,7 @@ export default function ConcurrencyPage() {
           <div className="mt-4 space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
-                { label: 'Sessions',           value: result.sessions_simulated,               color: 'text-indigo-400' },
+                { label: 'Sessions',           value: result.sessions_simulated,               color: 'text-cyan-400' },
                 { label: 'Deadlocks Detected', value: result.deadlocks_detected,               color: 'text-red-400' },
                 { label: 'Deadlocks Resolved', value: result.deadlocks_resolved,               color: 'text-emerald-400' },
                 { label: 'Avg Wait',           value: `${result.avg_wait_ms?.toFixed(1)}ms`,   color: 'text-amber-400' },
@@ -152,10 +152,10 @@ export default function ConcurrencyPage() {
             <BarChart data={stats}>
               <XAxis dataKey="lock_type" tick={{ fontSize: 11, fill: '#94a3b8' }} />
               <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: 'none', borderRadius: 8 }}
+              <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8 }}
                 formatter={(v: any, n: any) => [v, n]} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                {stats.map((s: any) => <Cell key={s.lock_type} fill={LOCK_COLORS[s.lock_type] || '#6366f1'} />)}
+                {stats.map((s: any) => <Cell key={s.lock_type} fill={LOCK_COLORS[s.lock_type] || '#06b6d4'} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -175,7 +175,11 @@ export default function ConcurrencyPage() {
               <div key={d.id} className="bg-red-500/5 border border-red-500/20 rounded-lg p-2 text-xs">
                 <p className="text-slate-300">Session: <span className="font-mono text-red-400">{d.session}</span></p>
                 <p className="text-slate-400">
-                  {d.operacion} · Wait: {d.wait_time?.toFixed(1)}ms · {d.resolved ? '✅ Resolved' : '⚠️ Pending'}
+                  {d.operacion} · Wait: {d.wait_time?.toFixed(1)}ms ·{' '}
+                  {d.resolved
+                    ? <span className="inline-flex items-center gap-1 text-emerald-400"><CheckCircle size={11} /> Resolved</span>
+                    : <span className="inline-flex items-center gap-1 text-amber-400"><AlertTriangle size={11} /> Pending</span>
+                  }
                 </p>
               </div>
             ))}
