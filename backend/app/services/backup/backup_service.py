@@ -50,6 +50,21 @@ async def upload_to_s3(file_path: Path, s3_key: str) -> Optional[str]:
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             region_name=settings.AWS_REGION,
         )
+
+        # Create bucket if it doesn't exist
+        try:
+            s3_client.head_bucket(Bucket=settings.S3_BUCKET_NAME)
+        except ClientError as e:
+            if e.response["Error"]["Code"] in ("404", "NoSuchBucket"):
+                if settings.AWS_REGION == "us-east-1":
+                    s3_client.create_bucket(Bucket=settings.S3_BUCKET_NAME)
+                else:
+                    s3_client.create_bucket(
+                        Bucket=settings.S3_BUCKET_NAME,
+                        CreateBucketConfiguration={"LocationConstraint": settings.AWS_REGION},
+                    )
+                print(f"[S3] Bucket created: {settings.S3_BUCKET_NAME} in {settings.AWS_REGION}")
+
         s3_client.upload_file(str(file_path), settings.S3_BUCKET_NAME, s3_key)
         url = f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_key}"
         print(f"[S3 UPLOAD] {url}")
