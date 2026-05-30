@@ -2,10 +2,15 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getTopSlowQueries, getQueryStats, seedDemoQueries, getOptimizerScenarios, runOptimizerScenario } from '../services/api'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
-import { Search, Zap, Play, ChevronDown, ChevronUp, TrendingDown, RefreshCw } from 'lucide-react'
+import { Search, Zap, Play, ChevronDown, ChevronUp, TrendingDown, RefreshCw, CheckCircle, Clock, AlertTriangle, XCircle } from 'lucide-react'
 
 const CAT_COLORS: any = { Fast: '#10b981', Medium: '#f59e0b', Slow: '#f97316', Critical: '#ef4444' }
-const CAT_BADGE: any  = { Fast: 'badge-healthy', Medium: 'badge-warning', Slow: 'text-orange-400', Critical: 'badge-critical' }
+const CAT_BADGE: any  = { Fast: 'badge-healthy', Medium: 'badge-warning', Slow: 'text-orange-400 font-bold', Critical: 'badge-critical' }
+
+const SCENARIO_CAT_STYLE: any = {
+  CRITICAL: 'bg-red-500/20 text-red-400 border border-red-500/30',
+  SLOW:     'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+}
 
 function ScanBadge({ type }: { type: string }) {
   const isSeq = type.includes('Sequential')
@@ -16,71 +21,146 @@ function ScanBadge({ type }: { type: string }) {
   )
 }
 
+function Step({ n, label, color = 'slate' }: { n: number; label: string; color?: string }) {
+  const colors: any = {
+    red:     'bg-red-500/20 text-red-400 border-red-500/40',
+    emerald: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+    cyan:    'bg-cyan-500/20 text-cyan-400 border-cyan-500/40',
+    slate:   'bg-slate-700 text-slate-300 border-slate-600',
+  }
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${colors[color]}`}>{n}</span>
+      <span className="text-xs font-semibold text-slate-300">{label}</span>
+    </div>
+  )
+}
+
 function OptimizationResult({ result }: { result: any }) {
   const [showPlan, setShowPlan] = useState(false)
-  const improvementColor = result.improvement_pct >= 80 ? 'text-emerald-400' : result.improvement_pct >= 50 ? 'text-amber-400' : 'text-orange-400'
+  const improvement = result.improvement_pct
+  const improvementColor = improvement >= 80 ? 'text-emerald-400' : improvement >= 50 ? 'text-amber-400' : 'text-orange-400'
+  const ranAt = new Date().toLocaleString()
 
   return (
-    <div className="space-y-3 mt-3">
-      {/* Before / After comparison */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3">
-          <p className="text-xs text-red-400 font-semibold mb-2">ANTES (sin optimización)</p>
-          <p className="text-2xl font-bold text-red-300 font-mono">{result.before.execution_ms} ms</p>
-          <div className="mt-2">
-            <ScanBadge type={result.before.scan_type} />
-          </div>
-          <p className="text-xs text-slate-500 mt-2 font-mono truncate">{result.slow_query.slice(0, 60)}…</p>
-        </div>
-        <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
-          <p className="text-xs text-emerald-400 font-semibold mb-2">DESPUÉS (con optimización)</p>
-          <p className="text-2xl font-bold text-emerald-300 font-mono">{result.after.execution_ms} ms</p>
-          <div className="mt-2">
-            <ScanBadge type={result.after.scan_type} />
-          </div>
-          <p className="text-xs text-slate-500 mt-2 font-mono truncate">{result.optimized_query.slice(0, 60)}…</p>
-        </div>
-      </div>
+    <div className="space-y-4 mt-4">
 
-      {/* Improvement bar */}
-      <div className="bg-slate-700/50 rounded-lg p-3 flex items-center gap-4">
-        <TrendingDown size={16} className="text-emerald-400 shrink-0" />
-        <div className="flex-1">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">Mejora de rendimiento</span>
-            <span className={`font-bold ${improvementColor}`}>{result.improvement_pct}% más rápido</span>
+      {/* Step 1 — Consulta clasificada */}
+      <div className="space-y-2">
+        <Step n={1} label="Consulta clasificada como SLOW / CRITICAL (sin optimización)" color="red" />
+        <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-3 ml-8">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={12} className="text-red-400" />
+            <span className="text-xs text-red-400 font-semibold">Consulta original · Tiempo real medido</span>
           </div>
-          <div className="w-full bg-slate-600 rounded-full h-2">
-            <div className="h-2 rounded-full bg-emerald-500 transition-all duration-700"
-              style={{ width: `${Math.min(result.improvement_pct, 100)}%` }} />
+          <code className="text-xs text-slate-300 font-mono block mb-3 leading-5">{result.slow_query}</code>
+          <div className="flex items-center gap-4">
+            <div>
+              <p className="text-[10px] text-slate-500 mb-0.5">Tiempo de ejecución</p>
+              <p className="text-2xl font-bold text-red-300 font-mono">{result.before.execution_ms} ms</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-500 mb-0.5">Tipo de escaneo</p>
+              <ScanBadge type={result.before.scan_type} />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Optimization applied */}
-      <div className="bg-slate-700/30 rounded-lg p-2">
-        <p className="text-xs text-slate-400 mb-1">Optimización aplicada:</p>
-        <code className="text-xs text-cyan-300 font-mono">{result.optimization_applied}</code>
+      {/* Step 2 — Plan EXPLAIN ANALYZE antes */}
+      <div className="space-y-2">
+        <Step n={2} label="Plan de ejecución original — EXPLAIN ANALYZE (BEFORE)" color="red" />
+        <div className="ml-8">
+          <button onClick={() => setShowPlan(p => !p)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 mb-2">
+            {showPlan ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            {showPlan ? 'Ocultar' : 'Ver'} EXPLAIN ANALYZE completo (antes / después)
+          </button>
+          {showPlan && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-red-400 mb-1 font-semibold">Plan ANTES — Seq Scan</p>
+                <pre className="text-xs text-slate-400 bg-zinc-950 border border-slate-700/50 rounded p-2 overflow-x-auto whitespace-pre-wrap font-mono leading-5 max-h-48">{result.before.plan}</pre>
+              </div>
+              <div>
+                <p className="text-xs text-emerald-400 mb-1 font-semibold">Plan DESPUÉS — Index Scan</p>
+                <pre className="text-xs text-slate-400 bg-zinc-950 border border-slate-700/50 rounded p-2 overflow-x-auto whitespace-pre-wrap font-mono leading-5 max-h-48">{result.after.plan}</pre>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* EXPLAIN ANALYZE plans toggle */}
-      <button onClick={() => setShowPlan(p => !p)}
-        className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200">
-        {showPlan ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        {showPlan ? 'Ocultar' : 'Ver'} EXPLAIN ANALYZE completo
-      </button>
-      {showPlan && (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-xs text-red-400 mb-1">Plan ANTES</p>
-            <pre className="text-xs text-slate-400 bg-slate-900 rounded p-2 overflow-x-auto whitespace-pre-wrap font-mono leading-5">{result.before.plan}</pre>
+      {/* Step 3 — Optimización aplicada */}
+      <div className="space-y-2">
+        <Step n={3} label="Optimización aplicada — CREATE INDEX ejecutado en PostgreSQL" color="cyan" />
+        <div className="ml-8 bg-cyan-500/5 border border-cyan-500/20 rounded-lg p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap size={12} className="text-cyan-400" />
+            <span className="text-xs text-cyan-400 font-semibold">DDL ejecutado</span>
           </div>
-          <div>
-            <p className="text-xs text-emerald-400 mb-1">Plan DESPUÉS</p>
-            <pre className="text-xs text-slate-400 bg-slate-900 rounded p-2 overflow-x-auto whitespace-pre-wrap font-mono leading-5">{result.after.plan}</pre>
-          </div>
+          <code className="text-xs text-cyan-300 font-mono leading-5 block">{result.optimization_applied}</code>
         </div>
-      )}
+      </div>
+
+      {/* Step 4 — Resultado después */}
+      <div className="space-y-2">
+        <Step n={4} label="Evidencia comparativa — EXPLAIN ANALYZE (AFTER)" color="emerald" />
+        <div className="ml-8 space-y-3">
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle size={12} className="text-emerald-400" />
+              <span className="text-xs text-emerald-400 font-semibold">Consulta optimizada · Tiempo real medido</span>
+            </div>
+            <code className="text-xs text-slate-300 font-mono block mb-3 leading-5">{result.optimized_query}</code>
+            <div className="flex items-center gap-4">
+              <div>
+                <p className="text-[10px] text-slate-500 mb-0.5">Tiempo de ejecución</p>
+                <p className="text-2xl font-bold text-emerald-300 font-mono">{result.after.execution_ms} ms</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-slate-500 mb-0.5">Tipo de escaneo</p>
+                <ScanBadge type={result.after.scan_type} />
+              </div>
+            </div>
+          </div>
+
+          {/* Improvement bar */}
+          <div className="bg-slate-700/50 rounded-lg p-3">
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingDown size={14} className="text-emerald-400 shrink-0" />
+              <div className="flex-1">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-400">Reducción de tiempo</span>
+                  <span className={`font-bold text-sm ${improvementColor}`}>{improvement}% más rápido</span>
+                </div>
+                <div className="w-full bg-slate-600 rounded-full h-2.5">
+                  <div className="h-2.5 rounded-full bg-emerald-500 transition-all duration-700"
+                    style={{ width: `${Math.min(improvement, 100)}%` }} />
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+              <div className="bg-red-500/10 rounded px-2 py-1.5">
+                <p className="text-[10px] text-slate-500">Antes</p>
+                <p className="text-sm font-bold text-red-300 font-mono">{result.before.execution_ms} ms</p>
+              </div>
+              <div className="bg-slate-800 rounded px-2 py-1.5 flex items-center justify-center">
+                <XCircle size={12} className="text-slate-500 mr-1" />
+                <span className="text-xs text-slate-500">vs</span>
+              </div>
+              <div className="bg-emerald-500/10 rounded px-2 py-1.5">
+                <p className="text-[10px] text-slate-500">Después</p>
+                <p className="text-sm font-bold text-emerald-300 font-mono">{result.after.execution_ms} ms</p>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-600 flex items-center gap-1">
+            <Clock size={10} /> Análisis ejecutado: {ranAt} · Tabla demo_orders 100K filas · PostgreSQL EXPLAIN ANALYZE real
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
@@ -106,7 +186,10 @@ export default function QueriesPage() {
 
   const runMut = useMutation({
     mutationFn: (id: number) => runOptimizerScenario(id).then(r => r.data),
-    onSuccess: (data) => setResults(prev => ({ ...prev, [data.scenario_id]: data })),
+    onSuccess: (data) => {
+      setResults(prev => ({ ...prev, [data.scenario_id]: data }))
+      setActiveScenario(data.scenario_id)
+    },
   })
 
   return (
@@ -134,48 +217,35 @@ export default function QueriesPage() {
           </div>
           <button onClick={() => { refetchStats(); refetchSlow() }}
             className="text-slate-400 hover:text-slate-200 p-1.5 rounded hover:bg-slate-700">
-            <RefreshCw size={13} className={seedMut.isPending ? 'animate-spin' : ''} />
+            <RefreshCw size={13} />
           </button>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* Count chart */}
           <div>
             <p className="text-xs text-slate-400 mb-2">Cantidad por categoría</p>
             <ResponsiveContainer width="100%" height={160}>
-              <BarChart key={`count-${(stats as any[]).reduce((s: number, r: any) => s + r.count, 0)}`} data={stats} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={stats} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                <Tooltip
-                  contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: any) => [`${v} queries`, 'Count']}
-                />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]} isAnimationActive={true}>
+                <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }} formatter={(v: any) => [`${v} queries`, 'Count']} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   <LabelList dataKey="count" position="top" style={{ fontSize: 10, fill: '#94a3b8' }} />
-                  {(stats as any[]).map((entry: any) => (
-                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />
-                  ))}
+                  {(stats as any[]).map((entry: any) => <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-
-          {/* Avg ms chart */}
           <div>
             <p className="text-xs text-slate-400 mb-2">Tiempo promedio por categoría (ms)</p>
             <ResponsiveContainer width="100%" height={160}>
-              <BarChart key={`avg-${(stats as any[]).reduce((s: number, r: any) => s + r.avg_ms, 0).toFixed(0)}`} data={stats} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={stats} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                 <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} unit="ms" />
-                <Tooltip
-                  contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }}
-                  formatter={(v: any) => [`${Number(v).toFixed(1)} ms`, 'Avg Duration']}
-                />
-                <Bar dataKey="avg_ms" radius={[4, 4, 0, 0]} isAnimationActive={true}>
+                <Tooltip contentStyle={{ background: '#18181b', border: 'none', borderRadius: 8, fontSize: 12 }} formatter={(v: any) => [`${Number(v).toFixed(1)} ms`, 'Avg Duration']} />
+                <Bar dataKey="avg_ms" radius={[4, 4, 0, 0]}>
                   <LabelList dataKey="avg_ms" position="top" formatter={(v: any) => `${Number(v).toFixed(0)}ms`} style={{ fontSize: 10, fill: '#94a3b8' }} />
-                  {(stats as any[]).map((entry: any) => (
-                    <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />
-                  ))}
+                  {(stats as any[]).map((entry: any) => <Cell key={entry.category} fill={CAT_COLORS[entry.category] || '#06b6d4'} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -185,37 +255,42 @@ export default function QueriesPage() {
 
       {/* ── Query Optimization Lab ────────────────────────────────── */}
       <div className="card">
-        <div className="mb-4">
+        <div className="mb-5">
           <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
             <TrendingDown size={14} className="text-emerald-400" />
-            Query Optimization Lab — Evidencia comparativa antes/después
+            Query Optimization Lab — Evidencia comparativa paso a paso
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Ejecuta EXPLAIN ANALYZE real sobre 100K filas. Mide el tiempo antes de la optimización y después de aplicar el índice.
+            Selecciona una consulta clasificada como <span className="text-orange-400 font-semibold">Slow</span> o <span className="text-red-400 font-semibold">Critical</span>. El sistema ejecuta EXPLAIN ANALYZE real sobre 100K filas,
+            aplica la optimización (CREATE INDEX) y muestra la evidencia comparativa antes/después.
           </p>
         </div>
 
         <div className="space-y-3">
           {(scenarios as any[]).map((s: any) => (
-            <div key={s.id} className="border border-slate-700 rounded-lg overflow-hidden">
-              {/* Scenario header */}
+            <div key={s.id} className={`border rounded-lg overflow-hidden transition-all ${activeScenario === s.id ? 'border-cyan-500/40' : 'border-slate-700'}`}>
               <div
                 className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-700/30"
                 onClick={() => setActiveScenario(activeScenario === s.id ? null : s.id)}
               >
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-200">{s.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{s.description}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${SCENARIO_CAT_STYLE[s.category] || ''}`}>
+                      {s.category}
+                    </span>
+                    <p className="text-sm font-medium text-slate-200">{s.title}</p>
+                  </div>
+                  <p className="text-xs text-slate-400">{s.description}</p>
                 </div>
                 <div className="flex items-center gap-3 ml-4 shrink-0">
                   {results[s.id] && (
-                    <span className="text-xs text-emerald-400 font-bold">
+                    <span className="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
                       {results[s.id].improvement_pct}% mejora
                     </span>
                   )}
                   <button
                     onClick={(e) => { e.stopPropagation(); runMut.mutate(s.id) }}
-                    disabled={runMut.isPending && runMut.variables === s.id}
+                    disabled={runMut.isPending}
                     className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded-lg"
                   >
                     <Play size={11} />
@@ -225,26 +300,32 @@ export default function QueriesPage() {
                 </div>
               </div>
 
-              {/* Query preview */}
               {activeScenario === s.id && (
-                <div className="px-4 pb-4 border-t border-slate-700/50 bg-slate-800/30">
-                  <div className="grid grid-cols-2 gap-3 mt-3 mb-2">
-                    <div>
-                      <p className="text-xs text-red-400 mb-1">Query lenta (antes)</p>
-                      <code className="text-xs text-slate-300 font-mono bg-slate-900 rounded px-2 py-1 block">{s.slow_query}</code>
-                    </div>
-                    <div>
-                      <p className="text-xs text-emerald-400 mb-1">Query optimizada (después)</p>
-                      <code className="text-xs text-slate-300 font-mono bg-slate-900 rounded px-2 py-1 block">{s.optimized_query}</code>
-                    </div>
-                  </div>
-
-                  {results[s.id] && <OptimizationResult result={results[s.id]} />}
+                <div className="px-4 pb-5 border-t border-slate-700/50 bg-slate-800/30">
+                  {/* Query preview (before running) */}
                   {!results[s.id] && (
-                    <p className="text-xs text-slate-500 text-center py-4">
-                      Presiona "Ejecutar" para correr EXPLAIN ANALYZE y ver la comparación real.
+                    <div className="grid grid-cols-2 gap-3 mt-4 mb-2">
+                      <div>
+                        <p className="text-xs text-red-400 mb-1 font-semibold">Query lenta (ANTES)</p>
+                        <code className="text-xs text-slate-300 font-mono bg-zinc-950 border border-slate-700/50 rounded px-2 py-1.5 block leading-5">{s.slow_query}</code>
+                      </div>
+                      <div>
+                        <p className="text-xs text-emerald-400 mb-1 font-semibold">Query optimizada (DESPUÉS)</p>
+                        <code className="text-xs text-slate-300 font-mono bg-zinc-950 border border-slate-700/50 rounded px-2 py-1.5 block leading-5">{s.optimized_query}</code>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs text-cyan-400 mb-1 font-semibold">Optimización a aplicar</p>
+                        <code className="text-xs text-cyan-300 font-mono bg-zinc-950 border border-cyan-500/20 rounded px-2 py-1.5 block">{s.optimization}</code>
+                      </div>
+                    </div>
+                  )}
+                  {!results[s.id] && (
+                    <p className="text-xs text-slate-500 text-center py-3">
+                      Presiona <span className="text-emerald-400 font-semibold">Ejecutar</span> para correr EXPLAIN ANALYZE y ver la comparación real paso a paso.
                     </p>
                   )}
+
+                  {results[s.id] && <OptimizationResult result={results[s.id]} />}
                 </div>
               )}
             </div>
@@ -265,7 +346,7 @@ export default function QueriesPage() {
                 <th className="text-left pb-2 pr-4">Query</th>
                 <th className="text-left pb-2 pr-4">Duration</th>
                 <th className="text-left pb-2 pr-4">Category</th>
-                <th className="text-left pb-2">Index Used</th>
+                <th className="text-left pb-2 pr-4">Index Used</th>
                 <th className="text-left pb-2">Optimization Suggestion</th>
               </tr>
             </thead>

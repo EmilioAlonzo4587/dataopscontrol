@@ -21,6 +21,7 @@ export const register = (data: { username: string; email: string; password: stri
 // ─── Connections ──────────────────────────────────────────────
 export const getConnections = () => api.get('/api/connections/')
 export const createConnection = (data: any) => api.post('/api/connections/', data)
+export const updateConnection = (id: number, data: any) => api.put(`/api/connections/${id}`, data)
 export const deleteConnection = (id: number) => api.delete(`/api/connections/${id}`)
 export const testConnection = (id: number) => api.post(`/api/connections/${id}/test`)
 

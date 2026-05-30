@@ -37,6 +37,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <div>
               <h1 className="text-sm font-semibold text-white tracking-tight">DataOps Control</h1>
+              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">By Green Arrow</p>
             </div>
           </div>
         </div>

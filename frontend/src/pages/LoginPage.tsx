@@ -169,7 +169,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-600 mt-5">
-          DataOps Control Center · BD II Final Project
+          DataOps Control Center
         </p>
       </div>
     </div>

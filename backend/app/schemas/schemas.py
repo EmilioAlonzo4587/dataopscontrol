@@ -43,6 +43,16 @@ class ConnectionCreate(BaseModel):
     password: str  # plain text in request, encrypted before storage
 
 
+class ConnectionUpdate(BaseModel):
+    nombre: str
+    motor: DBEngine
+    host: str
+    port: int
+    database_name: str
+    user_name: str
+    password: Optional[str] = None  # blank = keep existing encrypted password
+
+
 class ConnectionTest(BaseModel):
     connection_id: int
 

@@ -14,6 +14,7 @@ SCENARIOS = [
     {
         "id": 1,
         "title": "Full Table Scan vs Index Scan",
+        "category": "CRITICAL",
         "description": "SELECT por customer_id sin índice obliga un seq scan sobre 100K filas. Al crear el índice, cae a index scan.",
         "slow_query": "SELECT id, amount, status FROM demo_orders WHERE customer_id = 1234",
         "optimization": "CREATE INDEX IF NOT EXISTS idx_demo_orders_customer ON demo_orders(customer_id)",
@@ -23,6 +24,7 @@ SCENARIOS = [
     {
         "id": 2,
         "title": "Leading Wildcard vs Full-Text Search",
+        "category": "SLOW",
         "description": "LIKE '%palabra%' no puede usar un índice B-tree. Al cambiar a LIKE 'palabra%' (sin leading wildcard) sí lo usa.",
         "slow_query": "SELECT id, description FROM demo_products WHERE description LIKE '%premium%'",
         "optimization": "CREATE INDEX IF NOT EXISTS idx_demo_products_desc ON demo_products(description varchar_pattern_ops)",
@@ -32,11 +34,32 @@ SCENARIOS = [
     {
         "id": 3,
         "title": "Unindexed Date Range Filter",
+        "category": "SLOW",
         "description": "Filtrar por rango de fechas sin índice en created_at requiere scan completo. El índice permite Index Range Scan.",
         "slow_query": "SELECT id, customer_id, amount FROM demo_orders WHERE created_at > '2024-06-01'",
         "optimization": "CREATE INDEX IF NOT EXISTS idx_demo_orders_date ON demo_orders(created_at)",
         "undo": "DROP INDEX IF EXISTS idx_demo_orders_date",
         "optimized_query": "SELECT id, customer_id, amount FROM demo_orders WHERE created_at > '2024-06-01'",
+    },
+    {
+        "id": 4,
+        "title": "JOIN sin índice — Nested Loop con Seq Scan",
+        "category": "CRITICAL",
+        "description": "JOIN entre demo_orders (100K filas) y demo_products (50K filas) en product_id sin índice genera hash join con dos seq scans completos. El índice lo convierte en nested loop con index scan.",
+        "slow_query": "SELECT o.customer_id, p.name, SUM(o.amount) as total FROM demo_orders o JOIN demo_products p ON o.product_id = p.id WHERE o.status = 'completed' GROUP BY o.customer_id, p.name ORDER BY total DESC LIMIT 10",
+        "optimization": "CREATE INDEX IF NOT EXISTS idx_demo_orders_product_id ON demo_orders(product_id); CREATE INDEX IF NOT EXISTS idx_demo_orders_status_product ON demo_orders(status, product_id)",
+        "undo": "DROP INDEX IF EXISTS idx_demo_orders_product_id; DROP INDEX IF EXISTS idx_demo_orders_status_product",
+        "optimized_query": "SELECT o.customer_id, p.name, SUM(o.amount) as total FROM demo_orders o JOIN demo_products p ON o.product_id = p.id WHERE o.status = 'completed' GROUP BY o.customer_id, p.name ORDER BY total DESC LIMIT 10",
+    },
+    {
+        "id": 5,
+        "title": "Índice Compuesto — Covering Index con ORDER BY",
+        "category": "CRITICAL",
+        "description": "Filtro multi-columna (status + created_at) con ORDER BY amount sin índice compuesto obliga Sort externo + Seq Scan completo. Un covering index elimina el heap fetch y el sort.",
+        "slow_query": "SELECT id, customer_id, amount FROM demo_orders WHERE status = 'completed' AND created_at > '2024-01-01' ORDER BY amount DESC LIMIT 50",
+        "optimization": "CREATE INDEX IF NOT EXISTS idx_demo_orders_covering ON demo_orders(status, created_at, amount DESC)",
+        "undo": "DROP INDEX IF EXISTS idx_demo_orders_covering",
+        "optimized_query": "SELECT id, customer_id, amount FROM demo_orders WHERE status = 'completed' AND created_at > '2024-01-01' ORDER BY amount DESC LIMIT 50",
     },
 ]
 
@@ -149,13 +172,19 @@ async def run_optimization_scenario(scenario_id: int):
         await _ensure_demo_tables(conn)
 
         # Drop index first to ensure clean "before" state
-        await conn.execute(scenario["undo"])
+        for stmt in scenario["undo"].split(";"):
+            s = stmt.strip()
+            if s:
+                await conn.execute(s)
 
         # BEFORE: run slow query with no optimization
         before = await _explain_analyze(conn, scenario["slow_query"])
 
-        # Apply optimization
-        await conn.execute(scenario["optimization"])
+        # Apply optimization (may be multiple statements separated by ;)
+        for stmt in scenario["optimization"].split(";"):
+            s = stmt.strip()
+            if s:
+                await conn.execute(s)
 
         # AFTER: run optimized query
         after = await _explain_analyze(conn, scenario["optimized_query"])

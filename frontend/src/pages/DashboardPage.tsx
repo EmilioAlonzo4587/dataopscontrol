@@ -27,10 +27,10 @@ function KpiCard({ label, value, sub, color = 'cyan', icon: Icon }: any) {
 }
 
 export default function DashboardPage() {
-  const { data: overview } = useQuery({ queryKey: ['overview'], queryFn: () => getDashboardOverview().then(r => r.data), refetchInterval: 15000 })
-  const { data: availability } = useQuery({ queryKey: ['availability'], queryFn: () => getAvailabilityByDb().then(r => r.data), refetchInterval: 30000 })
-  const { data: slowQueries } = useQuery({ queryKey: ['slowQueries'], queryFn: () => getTopSlowQueries(5).then(r => r.data) })
-  const { data: sla } = useQuery({ queryKey: ['sla'], queryFn: () => getSlaReport().then(r => r.data) })
+  const { data: overview } = useQuery({ queryKey: ['overview'], queryFn: () => getDashboardOverview().then(r => r.data), refetchInterval: 10000, refetchOnMount: 'always' })
+  const { data: availability } = useQuery({ queryKey: ['availability'], queryFn: () => getAvailabilityByDb().then(r => r.data), refetchInterval: 10000, refetchOnMount: 'always' })
+  const { data: slowQueries } = useQuery({ queryKey: ['slowQueries'], queryFn: () => getTopSlowQueries(5).then(r => r.data), refetchInterval: 15000, refetchOnMount: 'always' })
+  const { data: sla } = useQuery({ queryKey: ['sla'], queryFn: () => getSlaReport().then(r => r.data), refetchInterval: 15000, refetchOnMount: 'always' })
 
   const healthPie = overview
     ? Object.entries(overview.health_distribution || {}).map(([name, value]) => ({ name, value }))

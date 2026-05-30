@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getConnections, createConnection, deleteConnection, testConnection } from '../services/api'
-import { Plus, Trash2, Play, Database, CheckCircle, XCircle, Clock, Lock } from 'lucide-react'
+import { getConnections, createConnection, updateConnection, deleteConnection, testConnection } from '../services/api'
+import { Plus, Trash2, Play, Database, CheckCircle, XCircle, Clock, Lock, Pencil, X } from 'lucide-react'
 
 const STATUS_COLORS: any = {
   ACTIVE:   'badge-healthy',
@@ -9,13 +9,16 @@ const STATUS_COLORS: any = {
   ERROR:    'badge-critical',
 }
 
+const EMPTY_FORM = {
+  nombre: '', motor: 'PostgreSQL', host: 'localhost', port: '5432',
+  database_name: '', user_name: '', password: '',
+}
+
 export default function ConnectionsPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({
-    nombre: '', motor: 'PostgreSQL', host: 'localhost', port: 5432,
-    database_name: '', user_name: '', password: '',
-  })
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState({ ...EMPTY_FORM })
   const [testResults, setTestResults] = useState<Record<number, any>>({})
 
   const { data: connections = [] } = useQuery({
@@ -23,20 +26,64 @@ export default function ConnectionsPage() {
     queryFn: () => getConnections().then(r => r.data),
   })
 
+  const invalidateDashboard = () => {
+    qc.invalidateQueries({ queryKey: ['connections'] })
+    qc.invalidateQueries({ queryKey: ['overview'] })
+    qc.invalidateQueries({ queryKey: ['availability'] })
+    qc.invalidateQueries({ queryKey: ['sla'] })
+  }
+
+  const closeForm = () => {
+    setShowForm(false)
+    setEditingId(null)
+    setForm({ ...EMPTY_FORM })
+  }
+
   const createMut = useMutation({
     mutationFn: createConnection,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['connections'] }); setShowForm(false) },
+    onSuccess: () => { invalidateDashboard(); closeForm() },
+  })
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => updateConnection(id, data),
+    onSuccess: () => { invalidateDashboard(); closeForm() },
   })
 
   const deleteMut = useMutation({
     mutationFn: deleteConnection,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['connections'] }),
+    onSuccess: invalidateDashboard,
   })
+
+  const handleEdit = (conn: any) => {
+    setForm({
+      nombre: conn.nombre,
+      motor: conn.motor,
+      host: conn.host,
+      port: String(conn.port),
+      database_name: conn.database_name,
+      user_name: conn.user_name,
+      password: '',
+    })
+    setEditingId(conn.id)
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleSave = () => {
+    const payload = { ...form, port: parseInt(String(form.port), 10) || 0 }
+    if (editingId) {
+      updateMut.mutate({ id: editingId, data: payload })
+    } else {
+      createMut.mutate(payload)
+    }
+  }
 
   const handleTest = async (id: number) => {
     const res = await testConnection(id)
     setTestResults(prev => ({ ...prev, [id]: res.data }))
   }
+
+  const isPending = createMut.isPending || updateMut.isPending
 
   return (
     <div className="p-6 space-y-6">
@@ -46,7 +93,7 @@ export default function ConnectionsPage() {
           <p className="text-slate-400 text-sm">Module 1 — Register and manage database engines</p>
         </div>
         <button
-          onClick={() => setShowForm(!showForm)}
+          onClick={() => { closeForm(); setShowForm(true) }}
           className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg transition-colors"
         >
           <Plus size={16} /> New Connection
@@ -54,23 +101,33 @@ export default function ConnectionsPage() {
       </div>
 
       {showForm && (
-        <div className="card">
-          <h2 className="text-sm font-semibold text-slate-300 mb-4">Register New Connection</h2>
+        <div className="card border-cyan-500/30">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              {editingId ? <><Pencil size={14} className="text-cyan-400" /> Edit Connection</> : <><Plus size={14} className="text-cyan-400" /> Register New Connection</>}
+            </h2>
+            <button onClick={closeForm} className="text-slate-500 hover:text-white">
+              <X size={16} />
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             {[
               { key: 'nombre', label: 'Alias', type: 'text' },
               { key: 'host',   label: 'Host',  type: 'text' },
-              { key: 'database_name', label: 'Database', type: 'text' },
+              { key: 'database_name', label: 'Database / SID', type: 'text' },
               { key: 'user_name', label: 'Username', type: 'text' },
-              { key: 'password', label: 'Password', type: 'password' },
-              { key: 'port', label: 'Port', type: 'number' },
+              { key: 'password', label: editingId ? 'Password (dejar vacío para mantener)' : 'Password', type: 'password' },
+              { key: 'port', label: 'Port', type: 'text' },
             ].map(({ key, label, type }) => (
               <div key={key}>
                 <label className="text-xs text-slate-400 block mb-1">{label}</label>
                 <input
                   type={type}
+                  inputMode={key === 'port' ? 'numeric' : undefined}
+                  pattern={key === 'port' ? '[0-9]*' : undefined}
                   value={(form as any)[key]}
-                  onChange={e => setForm(p => ({ ...p, [key]: type === 'number' ? +e.target.value : e.target.value }))}
+                  placeholder={editingId && key === 'password' ? '••••••••' : ''}
+                  onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-slate-200 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                 />
               </div>
@@ -90,13 +147,13 @@ export default function ConnectionsPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <button
-              onClick={() => createMut.mutate(form)}
-              disabled={createMut.isPending}
-              className="bg-cyan-600 hover:bg-cyan-700 text-white text-sm px-4 py-2 rounded-lg"
+              onClick={handleSave}
+              disabled={isPending}
+              className="bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg"
             >
-              {createMut.isPending ? 'Saving…' : 'Save & Test'}
+              {isPending ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Save & Test'}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
+            <button onClick={closeForm} className="text-slate-400 hover:text-white text-sm px-4 py-2">Cancel</button>
           </div>
           <p className="flex items-center gap-1.5 text-xs text-slate-500 mt-2">
             <Lock size={10} className="shrink-0" />
@@ -107,7 +164,7 @@ export default function ConnectionsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {connections.map((conn: any) => (
-          <div key={conn.id} className="card">
+          <div key={conn.id} className={`card transition-all ${editingId === conn.id ? 'ring-1 ring-cyan-500/40' : ''}`}>
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <Database className="text-cyan-400" size={18} />
@@ -125,6 +182,12 @@ export default function ConnectionsPage() {
                 className="flex items-center gap-1 text-xs bg-slate-700 hover:bg-slate-600 text-slate-300 px-3 py-1.5 rounded-lg"
               >
                 <Play size={12} /> Test
+              </button>
+              <button
+                onClick={() => handleEdit(conn)}
+                className="flex items-center gap-1 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 px-3 py-1.5 rounded-lg"
+              >
+                <Pencil size={12} /> Edit
               </button>
               <button
                 onClick={() => deleteMut.mutate(conn.id)}

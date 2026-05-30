@@ -7,7 +7,7 @@ from sqlalchemy import select
 from app.db.database import get_db
 from app.models.models import Connection, ConnectionStatus
 from app.core.security import encrypt_credential, decrypt_credential
-from app.schemas.schemas import ConnectionCreate, ConnectionOut, ConnectionTest
+from app.schemas.schemas import ConnectionCreate, ConnectionUpdate, ConnectionOut, ConnectionTest
 
 router = APIRouter()
 
@@ -48,6 +48,27 @@ async def create_connection(payload: ConnectionCreate, db: AsyncSession = Depend
     test_result = await test_connection_internal(conn)
     conn.status = ConnectionStatus.ACTIVE if test_result["success"] else ConnectionStatus.ERROR
     await db.commit()
+    return conn
+
+
+@router.put("/{conn_id}", response_model=ConnectionOut)
+async def update_connection(conn_id: int, payload: ConnectionUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Connection).where(Connection.id == conn_id))
+    conn = result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    conn.nombre = payload.nombre
+    conn.motor = payload.motor
+    conn.host = payload.host
+    conn.port = payload.port
+    conn.database_name = payload.database_name
+    conn.user_name = payload.user_name
+    if payload.password:
+        conn.password_enc = encrypt_credential(payload.password)
+    test_result = await test_connection_internal(conn)
+    conn.status = ConnectionStatus.ACTIVE if test_result["success"] else ConnectionStatus.ERROR
+    await db.commit()
+    await db.refresh(conn)
     return conn
 
 
